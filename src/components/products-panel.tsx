@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { QrCode } from "lucide-react";
+import { ProductDetailModal } from "@/components/product-detail-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +25,7 @@ export function ProductsPanel() {
   }, [tick]);
   const [editing, setEditing] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
+  const [detail, setDetail] = useState<Product | null>(null);
 
   return (
     <div className="space-y-6">
@@ -35,7 +38,7 @@ export function ProductsPanel() {
             Productos
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Alta y edición de SKUs, precios y stock.
+            Alta, ficha con QR/barcode e impresión térmica de etiquetas.
           </p>
         </div>
         <Button
@@ -45,6 +48,7 @@ export function ProductsPanel() {
           onClick={() => {
             setCreating(true);
             setEditing(null);
+            setDetail(null);
           }}
         >
           Cargar producto
@@ -62,6 +66,18 @@ export function ProductsPanel() {
             setCreating(false);
             setEditing(null);
             setTick((t) => t + 1);
+          }}
+        />
+      ) : null}
+
+      {detail ? (
+        <ProductDetailModal
+          product={detail}
+          onClose={() => setDetail(null)}
+          onEdit={() => {
+            setEditing(detail);
+            setCreating(false);
+            setDetail(null);
           }}
         />
       ) : null}
@@ -85,9 +101,20 @@ export function ProductsPanel() {
           </thead>
           <tbody className="divide-y divide-border/60">
             {products.map((p) => (
-              <tr key={p.id} className={!p.activo ? "opacity-50" : undefined}>
+              <tr
+                key={p.id}
+                className={!p.activo ? "opacity-50" : undefined}
+              >
                 <td className="px-4 py-3 font-mono text-xs">{p.sku}</td>
-                <td className="px-4 py-3 font-medium">{p.nombre}</td>
+                <td className="px-4 py-3">
+                  <button
+                    type="button"
+                    className="text-left font-medium hover:text-teal hover:underline"
+                    onClick={() => setDetail(p)}
+                  >
+                    {p.nombre}
+                  </button>
+                </td>
                 <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
                   {CATEGORY_LABELS[p.categoria]}
                 </td>
@@ -101,17 +128,28 @@ export function ProductsPanel() {
                     .join(" · ")}
                 </td>
                 <td className="px-4 py-3 tabular-nums">{p.stock}</td>
-                <td className="px-4 py-3 text-right">
-                  <button
-                    type="button"
-                    className="text-sm font-medium text-teal hover:underline"
-                    onClick={() => {
-                      setEditing(p);
-                      setCreating(false);
-                    }}
-                  >
-                    Editar
-                  </button>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-sm font-medium text-teal hover:underline"
+                      onClick={() => setDetail(p)}
+                    >
+                      <QrCode className="size-3.5" />
+                      Ficha
+                    </button>
+                    <button
+                      type="button"
+                      className="text-sm font-medium text-muted-foreground hover:text-foreground hover:underline"
+                      onClick={() => {
+                        setEditing(p);
+                        setCreating(false);
+                        setDetail(null);
+                      }}
+                    >
+                      Editar
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
