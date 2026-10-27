@@ -1,0 +1,90 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sand: var(--sand);
+  --color-charcoal: var(--charcoal);
+  --color-teal: var(--teal);
+  --color-teal-soft: var(--teal-soft);
+  --radius-lg: var(--radius);
+}
+
+:root {
+  --sand: #e5e0d6;
+  --charcoal: #1f1c19;
+  --teal: #0f766e;
+  --teal-soft: #d7ebe7;
+  --background: #e8e3d9;
+  --foreground: #1f1c19;
+  --card: #f2eee6;
+  --card-foreground: #1f1c19;
+  --primary: #0f766e;
+  --primary-foreground: #f4faf9;
+  --secondary: #d9d2c5;
+  --secondary-foreground: #2a2622;
+  --muted: #ddd6c9;
+  --muted-foreground: #5c564e;
+  --accent: #d7ebe7;
+  --accent-foreground: #0f3d39;
+  --destructive: #b42318;
+  --border: #cfc6b8;
+  --input: #cfc6b8;
+  --ring: #0f766e;
+  --radius: 0.65rem;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.aurix-atmosphere {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #d7ebe7aa, transparent 55%),
+    radial-gradient(900px 500px at 90% 0%, #e8d4a866, transparent 50%),
+    linear-gradient(165deg, #ebe6dc 0%, #e0d9cd 45%, #d8d1c4 100%);
+}
+
+.aurix-grain {
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.45'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+  pointer-events: none;
+}
+
+@keyframes aurix-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-aurix-fade {
+  animation: aurix-fade 0.45s ease-out both;
+}
+
+.font-display {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+}
