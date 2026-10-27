@@ -62,7 +62,7 @@ export type Order = {
   status: OrderStatus;
   lines: OrderLine[];
   createdAt: string;
-  canal: "pos" | "pedido";
+  canal: "pos" | "pedido" | "mayorista";
   priceListId: string | null;
 };
 

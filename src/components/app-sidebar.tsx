@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Building2,
   LayoutDashboard,
   Package,
   Settings,
@@ -19,6 +20,7 @@ const NAV = [
   { href: "/productos", label: "Productos", icon: Package },
   { href: "/clientes", label: "Clientes", icon: Users },
   { href: "/pedidos", label: "Pedidos", icon: Warehouse },
+  { href: "/mayorista", label: "Mayorista", icon: Building2 },
   { href: "/pos", label: "POS", icon: ShoppingBag },
   { href: "/configuracion", label: "Configuración", icon: Settings },
 ];

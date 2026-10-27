@@ -517,6 +517,57 @@ export function addPedido(
   return order;
 }
 
+/** Pedido forzado a lista mayorista (módulo Mayorista). */
+export function addMayoristaPedido(
+  clientId: string,
+  lines: Order["lines"]
+): Order {
+  if (!clientId) throw new Error("Elegí un cliente.");
+  if (!lines.length) throw new Error("Agregá líneas al pedido.");
+  const client = clients.find((c) => c.id === clientId);
+  if (!client) throw new Error("Cliente no encontrado.");
+  const mayorista = priceLists.find(
+    (p) => p.id === PRICE_LIST_MAYORISTA && p.activa
+  );
+  if (!mayorista) {
+    throw new Error(
+      "No hay lista Mayorista activa. Creala o activala en Configuración."
+    );
+  }
+  // Validar que las líneas usan precio mayorista
+  const normalized = lines.map((l) => {
+    const p = products.find((x) => x.id === l.productId);
+    const unit = p ? productPrice(p, PRICE_LIST_MAYORISTA) : l.precioUnitario;
+    return { ...l, precioUnitario: unit };
+  });
+  for (const line of normalized) {
+    const p = products.find((x) => x.id === line.productId);
+    if (p) p.stock = Math.max(0, p.stock - line.cantidad);
+  }
+  products = [...products];
+  const order: Order = {
+    id: nextId("o"),
+    folio: `M-${2000 + seq}`,
+    clientId: client.id,
+    clienteNombre: client.nombre,
+    status: "confirmado",
+    canal: "mayorista",
+    createdAt: new Date().toISOString(),
+    priceListId: PRICE_LIST_MAYORISTA,
+    lines: normalized,
+  };
+  orders = [order, ...orders];
+  return order;
+}
+
+export function getOrder(id: string): Order | undefined {
+  return orders.find((o) => o.id === id);
+}
+
+export function listMayoristaOrders(): Order[] {
+  return listOrders().filter((o) => o.canal === "mayorista");
+}
+
 export { productPrice };
 
 export function dashboardStats(todayIso?: string) {
