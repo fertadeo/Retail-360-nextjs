@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,7 +11,14 @@ import {
   listProducts,
   resolveClientPriceListId,
 } from "@/lib/store";
-import { productPrice, type OrderLine } from "@/lib/types";
+import { printThermalTicket } from "@/lib/thermal-ticket";
+import {
+  orderTotal,
+  productPrice,
+  type Order,
+  type OrderLine,
+  type PaymentMethod,
+} from "@/lib/types";
 import { formatMxn } from "@/lib/utils";
 
 export function PosTerminal() {
@@ -22,8 +30,14 @@ export function PosTerminal() {
   const [q, setQ] = useState("");
   const [cart, setCart] = useState<OrderLine[]>([]);
   const [clientId, setClientId] = useState("");
+  const [conEnvio, setConEnvio] = useState(false);
+  const [envioCosto, setEnvioCosto] = useState("45");
+  const [direccion, setDireccion] = useState("");
+  const [telefono, setTelefono] = useState("");
+  const [metodoPago, setMetodoPago] = useState<PaymentMethod>("efectivo");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastSale, setLastSale] = useState<Order | null>(null);
 
   const priceListId = resolveClientPriceListId(clientId || null);
   const listLabel = getPriceList(priceListId)?.nombre ?? "Default";
@@ -36,10 +50,23 @@ export function PosTerminal() {
     );
   });
 
-  const total = cart.reduce(
+  const subtotal = cart.reduce(
     (a, l) => a + l.cantidad * l.precioUnitario,
     0
   );
+  const envioNum = conEnvio ? Math.max(0, Number(envioCosto) || 0) : 0;
+  const total = subtotal + envioNum;
+
+  function applyClientDefaults(nextClientId: string) {
+    const c = clients.find((x) => x.id === nextClientId);
+    if (c) {
+      setDireccion(c.direccion || "");
+      setTelefono(c.telefono || "");
+    } else {
+      setDireccion("");
+      setTelefono("");
+    }
+  }
 
   function rebuildCartForList(nextClientId: string) {
     const listId = resolveClientPriceListId(nextClientId || null);
@@ -93,11 +120,31 @@ export function PosTerminal() {
     setError(null);
     setMessage(null);
     try {
-      const sale = addPosSale(cart, clientId || null, priceListId);
+      const sale = addPosSale(cart, {
+        clientId: clientId || null,
+        priceListId,
+        conEnvio,
+        envioCosto: envioNum,
+        direccionEnvio: direccion,
+        telefonoContacto: telefono,
+        metodoPago,
+      });
+      setLastSale(sale);
       setCart([]);
       setMessage(
-        `Venta ${sale.folio} · ${listLabel} · ${formatMxn(total)}`
+        `Venta ${sale.folio} · ${listLabel} · ${formatMxn(orderTotal(sale))}`
       );
+      if (sale.conEnvio) {
+        try {
+          printThermalTicket(sale);
+        } catch (printErr) {
+          setError(
+            printErr instanceof Error
+              ? printErr.message
+              : "Venta OK; no se pudo abrir el ticket."
+          );
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo cobrar.");
     }
@@ -113,12 +160,13 @@ export function PosTerminal() {
           POS
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Lista activa: <span className="font-medium text-teal">{listLabel}</span>
-          . Cambia con el cliente.
+          Lista activa:{" "}
+          <span className="font-medium text-teal">{listLabel}</span>. Con
+          envío se imprime ticket térmico (80 mm).
         </p>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
+      <div className="grid gap-5 lg:grid-cols-[1.35fr_1fr]">
         <section className="space-y-3">
           <Input
             value={q}
@@ -150,29 +198,115 @@ export function PosTerminal() {
           <h2 className="font-display text-lg font-medium text-[#f2eee6]">
             Ticket
           </h2>
-          <div className="mt-3 space-y-1.5">
-            <label className="text-xs text-sand/55" htmlFor="pos-cli">
-              Cliente (opcional)
+
+          <div className="mt-3 space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs text-sand/55" htmlFor="pos-cli">
+                Cliente {conEnvio ? "(recomendado)" : "(opcional)"}
+              </label>
+              <select
+                id="pos-cli"
+                className="h-9 w-full rounded-lg border border-white/15 bg-white/5 px-2 text-sm text-[#f2eee6]"
+                value={clientId}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setClientId(next);
+                  rebuildCartForList(next);
+                  applyClientDefaults(next);
+                }}
+              >
+                <option value="">Mostrador</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="text-xs text-sand/55">Método de pago</span>
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    ["efectivo", "Efectivo"],
+                    ["transferencia", "Transferencia"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setMetodoPago(value)}
+                    className={`h-9 rounded-lg text-sm transition ${
+                      metodoPago === value
+                        ? "bg-teal text-[#f2eee6]"
+                        : "border border-white/15 bg-white/5 text-sand/80 hover:bg-white/10"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-[#f2eee6]">
+              <input
+                type="checkbox"
+                className="size-4 accent-teal"
+                checked={conEnvio}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setConEnvio(on);
+                  if (on && clientId) applyClientDefaults(clientId);
+                }}
+              />
+              Pedido con envío
             </label>
-            <select
-              id="pos-cli"
-              className="h-9 w-full rounded-lg border border-white/15 bg-white/5 px-2 text-sm text-[#f2eee6]"
-              value={clientId}
-              onChange={(e) => {
-                const next = e.target.value;
-                setClientId(next);
-                rebuildCartForList(next);
-              }}
-            >
-              <option value="">Mostrador</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </select>
+
+            {conEnvio ? (
+              <div className="space-y-2 rounded-lg border border-white/10 bg-black/20 p-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-sand/55" htmlFor="pos-tel">
+                    Teléfono
+                  </label>
+                  <Input
+                    id="pos-tel"
+                    value={telefono}
+                    onChange={(e) => setTelefono(e.target.value)}
+                    className="h-9 border-white/15 bg-white/5 text-[#f2eee6] placeholder:text-sand/35"
+                    placeholder="55 …"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-sand/55" htmlFor="pos-dir">
+                    Dirección de entrega
+                  </label>
+                  <Input
+                    id="pos-dir"
+                    value={direccion}
+                    onChange={(e) => setDireccion(e.target.value)}
+                    className="h-9 border-white/15 bg-white/5 text-[#f2eee6] placeholder:text-sand/35"
+                    placeholder="Calle, colonia, ciudad…"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-sand/55" htmlFor="pos-env">
+                    Precio de envío
+                  </label>
+                  <Input
+                    id="pos-env"
+                    type="number"
+                    min={0}
+                    value={envioCosto}
+                    onChange={(e) => setEnvioCosto(e.target.value)}
+                    className="h-9 border-white/15 bg-white/5 text-[#f2eee6]"
+                  />
+                </div>
+              </div>
+            ) : null}
           </div>
-          <ul className="mt-4 flex-1 space-y-2 overflow-y-auto">
+
+          <ul className="mt-4 max-h-48 flex-1 space-y-2 overflow-y-auto">
             {cart.map((l) => (
               <li
                 key={l.productId}
@@ -215,8 +349,19 @@ export function PosTerminal() {
               </li>
             ) : null}
           </ul>
+
           <div className="mt-4 border-t border-white/10 pt-4">
-            <p className="flex justify-between font-display text-xl font-semibold text-[#f2eee6]">
+            <p className="flex justify-between text-sm text-sand/70">
+              <span>Subtotal</span>
+              <span className="tabular-nums">{formatMxn(subtotal)}</span>
+            </p>
+            {conEnvio ? (
+              <p className="mt-1 flex justify-between text-sm text-sand/70">
+                <span>Envío</span>
+                <span className="tabular-nums">{formatMxn(envioNum)}</span>
+              </p>
+            ) : null}
+            <p className="mt-2 flex justify-between font-display text-xl font-semibold text-[#f2eee6]">
               <span>Total</span>
               <span className="tabular-nums">{formatMxn(total)}</span>
             </p>
@@ -232,8 +377,30 @@ export function PosTerminal() {
               disabled={!cart.length}
               onClick={checkout}
             >
-              Cobrar
+              {conEnvio ? "Cobrar e imprimir ticket" : "Cobrar"}
             </Button>
+            {lastSale?.conEnvio ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-2 h-10 w-full gap-1.5 border-white/20 bg-transparent text-[#f2eee6] hover:bg-white/10"
+                onClick={() => {
+                  try {
+                    printThermalTicket(lastSale);
+                    setError(null);
+                  } catch (e) {
+                    setError(
+                      e instanceof Error
+                        ? e.message
+                        : "No se pudo abrir el ticket."
+                    );
+                  }
+                }}
+              >
+                <Printer className="size-3.5" />
+                Reimprimir ticket {lastSale.folio}
+              </Button>
+            ) : null}
           </div>
         </section>
       </div>

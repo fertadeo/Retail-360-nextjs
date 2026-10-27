@@ -25,7 +25,7 @@ App en [http://127.0.0.1:3851](http://127.0.0.1:3851).
 | `/productos` | Alta y edición de SKUs |
 | `/clientes` | Agenda de clientes |
 | `/pedidos` | Pedidos + historial POS |
-| `/pos` | Terminal de caja |
+| `/pos` | Terminal de caja (envío + ticket térmico 80 mm) |
 | `/mayorista` | Pedidos B2B + boleta PDF Aurix |
 | `/configuracion` | Listas de precios (minorista, mayorista, custom) |
 

@@ -71,6 +71,11 @@ export function ClientsPanel() {
                 {[c.email, c.telefono, c.rfc].filter(Boolean).join(" · ") ||
                   "Sin datos de contacto"}
               </p>
+              {c.direccion ? (
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {c.direccion}
+                </p>
+              ) : null}
               <p className="mt-0.5 text-xs text-teal">
                 Lista:{" "}
                 {c.priceListId
@@ -109,6 +114,7 @@ function ClientForm({
   const [nombre, setNombre] = useState(initial?.nombre ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
   const [telefono, setTelefono] = useState(initial?.telefono ?? "");
+  const [direccion, setDireccion] = useState(initial?.direccion ?? "");
   const [rfc, setRfc] = useState(initial?.rfc ?? "");
   const [notas, setNotas] = useState(initial?.notas ?? "");
   const [priceListId, setPriceListId] = useState(initial?.priceListId ?? "");
@@ -122,6 +128,7 @@ function ClientForm({
         nombre,
         email,
         telefono,
+        direccion,
         rfc,
         notas,
         priceListId: priceListId || null,
@@ -167,6 +174,15 @@ function ClientForm({
             id="tel"
             value={telefono}
             onChange={(e) => setTelefono(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor="dir">Dirección</Label>
+          <Input
+            id="dir"
+            value={direccion}
+            onChange={(e) => setDireccion(e.target.value)}
+            placeholder="Calle, colonia, ciudad…"
           />
         </div>
         <div className="space-y-1.5">

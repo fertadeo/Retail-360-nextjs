@@ -2,7 +2,7 @@
  * Store en memoria (gold template). La API Aurix lo reemplazará.
  */
 import type { Client, Order, PriceList, Product } from "@/lib/types";
-import { productPrice } from "@/lib/types";
+import { orderTotal, productPrice } from "@/lib/types";
 
 export const PRICE_LIST_MINORISTA = "pl_minorista";
 export const PRICE_LIST_MAYORISTA = "pl_mayorista";
@@ -112,6 +112,7 @@ const CLIENTS: Client[] = [
     nombre: "María López",
     email: "maria@ejemplo.mx",
     telefono: "55 1234 5678",
+    direccion: "Av. Reforma 120, Col. Centro, CDMX",
     rfc: "LOMA850101XXX",
     notas: "Cliente frecuente.",
     priceListId: PRICE_LIST_MINORISTA,
@@ -121,6 +122,7 @@ const CLIENTS: Client[] = [
     nombre: "Comercial del Valle SA",
     email: "compras@valle.mx",
     telefono: "55 9876 5432",
+    direccion: "Calle Industrial 45, Parque Valle, NL",
     rfc: "CVA920215ABC",
     notas: "Factura a mes vencido.",
     priceListId: PRICE_LIST_MAYORISTA,
@@ -130,11 +132,20 @@ const CLIENTS: Client[] = [
     nombre: "Juan Pérez",
     email: "juan.perez@mail.com",
     telefono: "33 2222 1111",
+    direccion: "Calle Roble 8, Zapopan, Jal.",
     rfc: "",
     notas: "",
     priceListId: null,
   },
 ];
+
+const emptyEnvio = {
+  conEnvio: false,
+  envioCosto: 0,
+  direccionEnvio: null as string | null,
+  telefonoContacto: null as string | null,
+  metodoPago: null as Order["metodoPago"],
+};
 
 const ORDERS: Order[] = [
   {
@@ -146,6 +157,7 @@ const ORDERS: Order[] = [
     canal: "pedido",
     createdAt: "2026-10-25T15:20:00.000Z",
     priceListId: PRICE_LIST_MINORISTA,
+    ...emptyEnvio,
     lines: [
       {
         productId: "p4",
@@ -170,6 +182,8 @@ const ORDERS: Order[] = [
     canal: "pos",
     createdAt: "2026-10-27T18:05:00.000Z",
     priceListId: PRICE_LIST_MINORISTA,
+    ...emptyEnvio,
+    metodoPago: "efectivo",
     lines: [
       {
         productId: "p2",
@@ -194,6 +208,7 @@ const ORDERS: Order[] = [
     canal: "pedido",
     createdAt: "2026-10-27T12:00:00.000Z",
     priceListId: PRICE_LIST_MAYORISTA,
+    ...emptyEnvio,
     lines: [
       {
         productId: "p5",
@@ -422,6 +437,7 @@ export function upsertClient(
       nombre: input.nombre.trim(),
       email: input.email.trim(),
       telefono: input.telefono.trim(),
+      direccion: (input.direccion ?? "").trim(),
       rfc: input.rfc.trim().toUpperCase(),
       notas: input.notas.trim(),
     };
@@ -434,6 +450,7 @@ export function upsertClient(
     nombre: input.nombre.trim(),
     email: input.email.trim(),
     telefono: input.telefono.trim(),
+    direccion: (input.direccion ?? "").trim(),
     rfc: input.rfc.trim().toUpperCase(),
     notas: input.notas.trim(),
     priceListId,
@@ -460,27 +477,69 @@ export function listOrders() {
   );
 }
 
+export type PosSaleOptions = {
+  clientId?: string | null;
+  priceListId?: string | null;
+  conEnvio?: boolean;
+  envioCosto?: number;
+  direccionEnvio?: string;
+  telefonoContacto?: string;
+  metodoPago?: Order["metodoPago"];
+};
+
 export function addPosSale(
   lines: Order["lines"],
-  clientId: string | null,
-  priceListId?: string | null
+  options: PosSaleOptions = {}
 ): Order {
   if (!lines.length) throw new Error("Agregá al menos un producto.");
+  const clientId = options.clientId ?? null;
   const client = clientId ? clients.find((c) => c.id === clientId) : null;
   const listId =
-    priceListId ||
+    options.priceListId ||
     resolveClientPriceListId(clientId) ||
     getDefaultPriceListId();
+  const conEnvio = Boolean(options.conEnvio);
+  const envioCosto = conEnvio
+    ? Math.max(0, Number(options.envioCosto) || 0)
+    : 0;
+  const direccionEnvio = conEnvio
+    ? (options.direccionEnvio ?? client?.direccion ?? "").trim() || null
+    : null;
+  const telefonoContacto = conEnvio
+    ? (options.telefonoContacto ?? client?.telefono ?? "").trim() || null
+    : null;
+  const metodoPago = options.metodoPago ?? null;
+
+  if (conEnvio) {
+    if (!client && !(options.direccionEnvio ?? "").trim()) {
+      throw new Error("Para envío indicá cliente o dirección de entrega.");
+    }
+    if (!direccionEnvio) {
+      throw new Error("La dirección de envío es obligatoria.");
+    }
+    if (!telefonoContacto) {
+      throw new Error("El teléfono de contacto es obligatorio para envío.");
+    }
+  }
+  if (!metodoPago) {
+    throw new Error("Elegí método de pago: efectivo o transferencia.");
+  }
+
   const order: Order = {
     id: nextId("o"),
     folio: `POS-${200 + seq}`,
     clientId: client?.id ?? null,
     clienteNombre: client?.nombre ?? "Mostrador",
-    status: "entregado",
+    status: conEnvio ? "preparando" : "entregado",
     canal: "pos",
     createdAt: new Date().toISOString(),
     priceListId: listId,
     lines,
+    conEnvio,
+    envioCosto,
+    direccionEnvio,
+    telefonoContacto,
+    metodoPago,
   };
   for (const line of lines) {
     const p = products.find((x) => x.id === line.productId);
@@ -512,6 +571,7 @@ export function addPedido(
     createdAt: new Date().toISOString(),
     priceListId: listId,
     lines,
+    ...emptyEnvio,
   };
   orders = [order, ...orders];
   return order;
@@ -555,6 +615,7 @@ export function addMayoristaPedido(
     createdAt: new Date().toISOString(),
     priceListId: PRICE_LIST_MAYORISTA,
     lines: normalized,
+    ...emptyEnvio,
   };
   orders = [order, ...orders];
   return order;
@@ -579,12 +640,7 @@ export function dashboardStats(todayIso?: string) {
         o.status !== "cancelado" &&
         o.status !== "borrador"
     )
-    .reduce(
-      (acc, o) =>
-        acc +
-        o.lines.reduce((s, l) => s + l.cantidad * l.precioUnitario, 0),
-      0
-    );
+    .reduce((acc, o) => acc + orderTotal(o), 0);
   const stockBajo = products.filter((p) => p.activo && p.stock <= 20).length;
   return {
     productos: products.filter((p) => p.activo).length,

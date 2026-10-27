@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,8 +13,10 @@ import {
   listProducts,
   resolveClientPriceListId,
 } from "@/lib/store";
+import { printThermalTicket } from "@/lib/thermal-ticket";
 import {
   ORDER_STATUS_LABELS,
+  PAYMENT_METHOD_LABELS,
   orderTotal,
   productPrice,
   type OrderLine,
@@ -71,13 +74,28 @@ export function OrdersPanel() {
               <th className="px-4 py-3 font-medium">Estado</th>
               <th className="px-4 py-3 font-medium">Canal</th>
               <th className="px-4 py-3 font-medium text-right">Total</th>
+              <th className="px-4 py-3 font-medium" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60">
             {orders.map((o) => (
               <tr key={o.id}>
                 <td className="px-4 py-3 font-mono text-xs">{o.folio}</td>
-                <td className="px-4 py-3 font-medium">{o.clienteNombre}</td>
+                <td className="px-4 py-3">
+                  <p className="font-medium">{o.clienteNombre}</p>
+                  {o.conEnvio ? (
+                    <p className="text-xs text-teal">
+                      Envío · {formatMxn(o.envioCosto)}
+                      {o.metodoPago
+                        ? ` · ${PAYMENT_METHOD_LABELS[o.metodoPago]}`
+                        : ""}
+                    </p>
+                  ) : o.metodoPago ? (
+                    <p className="text-xs text-muted-foreground">
+                      {PAYMENT_METHOD_LABELS[o.metodoPago]}
+                    </p>
+                  ) : null}
+                </td>
                 <td className="px-4 py-3 text-muted-foreground">
                   {ORDER_STATUS_LABELS[o.status]}
                 </td>
@@ -86,6 +104,20 @@ export function OrdersPanel() {
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums font-medium">
                   {formatMxn(orderTotal(o))}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  {o.conEnvio ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={() => printThermalTicket(o)}
+                    >
+                      <Printer className="size-3.5" />
+                      Ticket
+                    </Button>
+                  ) : null}
                 </td>
               </tr>
             ))}

@@ -29,11 +29,20 @@ export type Product = {
   descripcion: string;
 };
 
+export type PaymentMethod = "efectivo" | "transferencia";
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  efectivo: "Efectivo",
+  transferencia: "Transferencia",
+};
+
 export type Client = {
   id: string;
   nombre: string;
   email: string;
   telefono: string;
+  /** Dirección de entrega / domicilio. */
+  direccion: string;
   rfc: string;
   notas: string;
   /** Lista de precios asignada; null = default del sistema. */
@@ -64,6 +73,12 @@ export type Order = {
   createdAt: string;
   canal: "pos" | "pedido" | "mayorista";
   priceListId: string | null;
+  /** Pedido POS (u otro) con entrega a domicilio. */
+  conEnvio: boolean;
+  envioCosto: number;
+  direccionEnvio: string | null;
+  telefonoContacto: string | null;
+  metodoPago: PaymentMethod | null;
 };
 
 export const CATEGORY_LABELS: Record<ProductCategory, string> = {
@@ -81,11 +96,15 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   cancelado: "Cancelado",
 };
 
-export function orderTotal(order: Order): number {
+export function orderSubtotal(order: Order): number {
   return order.lines.reduce(
     (acc, l) => acc + l.cantidad * l.precioUnitario,
     0
   );
+}
+
+export function orderTotal(order: Order): number {
+  return orderSubtotal(order) + (order.conEnvio ? order.envioCosto : 0);
 }
 
 export function productPrice(
