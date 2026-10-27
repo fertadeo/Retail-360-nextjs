@@ -169,15 +169,19 @@ export function PosTerminal() {
         `Venta ${sale.folio} · ${listLabel} · ${formatMxn(orderTotal(sale))}`
       );
       if (sale.conEnvio) {
-        try {
-          printThermalTicket(sale);
-        } catch (printErr) {
-          setError(
-            printErr instanceof Error
-              ? printErr.message
-              : "Venta OK; no se pudo abrir el ticket."
-          );
-        }
+        // Diferir un tick: el click de cobrar sigue contando como gesto de usuario
+        window.setTimeout(() => {
+          try {
+            printThermalTicket(sale);
+            setError(null);
+          } catch (printErr) {
+            setError(
+              printErr instanceof Error
+                ? printErr.message
+                : "Venta OK. Usá «Imprimir ticket»."
+            );
+          }
+        }, 0);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo cobrar.");
@@ -293,22 +297,21 @@ export function PosTerminal() {
               {lastSale.conEnvio ? (
                 <Button
                   type="button"
-                  variant="outline"
-                  className="h-11 w-full gap-2 border-white/20 bg-white/5 text-[#f2eee6] hover:bg-white/10 hover:text-[#f2eee6]"
+                  className="h-11 w-full gap-2 bg-[#5eead4] text-[#1f1c19] hover:bg-[#5eead4]/90"
                   onClick={reprint}
                 >
                   <Printer className="size-4" />
-                  Reimprimir ticket
+                  Imprimir ticket
                 </Button>
               ) : null}
 
-              <Button
+              <button
                 type="button"
-                className="h-11 w-full"
+                className="h-11 w-full rounded-lg border border-white/15 bg-transparent text-sm font-medium text-[#f2eee6] transition hover:bg-white/8"
                 onClick={startNewSale}
               >
                 Nueva venta
-              </Button>
+              </button>
             </div>
           ) : (
             <>

@@ -31,11 +31,7 @@ function lineRow(left: string, right: string): string {
   return `<div class="row"><span>${esc(left)}</span><span>${esc(right)}</span></div>`;
 }
 
-/**
- * Abre una ventana de impresión 80 mm (ticket térmico).
- * Compatible con impresoras ESC/POS vía driver del SO.
- */
-export function printThermalTicket(order: Order): void {
+function buildTicketHtml(order: Order): string {
   const sub = orderSubtotal(order);
   const total = orderTotal(order);
   const pago = order.metodoPago
@@ -75,7 +71,7 @@ export function printThermalTicket(order: Order): void {
     `
     : "";
 
-  const html = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
@@ -96,10 +92,7 @@ export function printThermalTicket(order: Order): void {
     .center { text-align: center; }
     .brand { font-size: 16px; font-weight: 700; letter-spacing: 0.04em; }
     .tag { font-size: 10px; margin-top: 2px; }
-    .sep {
-      border-top: 1px dashed #222;
-      margin: 8px 0;
-    }
+    .sep { border-top: 1px dashed #222; margin: 8px 0; }
     .row {
       display: flex;
       justify-content: space-between;
@@ -116,15 +109,9 @@ export function printThermalTicket(order: Order): void {
     .item { margin: 6px 0; }
     .item-name { font-weight: 700; }
     .addr { margin: 4px 0; line-height: 1.35; word-break: break-word; }
-    .total {
-      font-size: 15px;
-      font-weight: 700;
-      margin-top: 4px;
-    }
+    .total { font-size: 15px; font-weight: 700; margin-top: 4px; }
     .foot { margin-top: 10px; font-size: 10px; text-align: center; }
-    @media print {
-      body { width: 72mm; }
-    }
+    @media print { body { width: 72mm; } }
   </style>
 </head>
 <body>
@@ -144,11 +131,7 @@ export function printThermalTicket(order: Order): void {
   ${productRows}
   <div class="sep"></div>
   ${lineRow("Subtotal", formatMxn(sub))}
-  ${
-    order.conEnvio
-      ? lineRow("Envío", formatMxn(order.envioCosto))
-      : ""
-  }
+  ${order.conEnvio ? lineRow("Envío", formatMxn(order.envioCosto)) : ""}
   <div class="row total">
     <span>TOTAL</span>
     <span>${esc(formatMxn(total))}</span>
@@ -159,24 +142,54 @@ export function printThermalTicket(order: Order): void {
     Gracias por su compra<br/>
     ${esc(AURIX_BRAND.legalName)}
   </div>
-  <script>
-    window.onload = function () {
-      setTimeout(function () {
-        window.focus();
-        window.print();
-      }, 120);
-    };
-  </script>
 </body>
 </html>`;
+}
 
-  const win = window.open("", "_blank", "noopener,noreferrer,width=360,height=720");
-  if (!win) {
-    throw new Error(
-      "El navegador bloqueó la ventana de impresión. Permití pop-ups e intentá de nuevo."
-    );
+/**
+ * Imprime ticket térmico 80 mm vía iframe oculto.
+ * Evita pop-ups (window.open + noopener devolvía null y dejaba about:blank).
+ */
+export function printThermalTicket(order: Order): void {
+  const html = buildTicketHtml(order);
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("title", `Ticket ${order.folio}`);
+  iframe.style.cssText =
+    "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
+  if (!doc) {
+    iframe.remove();
+    throw new Error("No se pudo preparar la impresión del ticket.");
   }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  const cleanup = () => {
+    try {
+      iframe.remove();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const runPrint = () => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } finally {
+      // Dar tiempo al diálogo de impresión antes de sacar el iframe
+      window.setTimeout(cleanup, 800);
+    }
+  };
+
+  // Esperar a que el documento del iframe esté listo
+  if (iframe.contentDocument?.readyState === "complete") {
+    window.setTimeout(runPrint, 50);
+  } else {
+    iframe.onload = () => window.setTimeout(runPrint, 50);
+  }
 }
