@@ -26,6 +26,7 @@ App en [http://127.0.0.1:3851](http://127.0.0.1:3851).
 | `/clientes` | Agenda de clientes |
 | `/pedidos` | Pedidos + historial POS |
 | `/pos` | Terminal de caja |
+| `/configuracion` | Listas de precios (minorista, mayorista, custom) |
 
 ## Template GitHub
 

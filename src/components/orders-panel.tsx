@@ -6,13 +6,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   addPedido,
+  getPriceList,
   listClients,
   listOrders,
   listProducts,
+  resolveClientPriceListId,
 } from "@/lib/store";
 import {
   ORDER_STATUS_LABELS,
   orderTotal,
+  productPrice,
   type OrderLine,
 } from "@/lib/types";
 import { formatMxn } from "@/lib/utils";
@@ -108,10 +111,14 @@ function NewOrderForm({
   const [lines, setLines] = useState<OrderLine[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  const listId = resolveClientPriceListId(clientId);
+  const listName = getPriceList(listId)?.nombre ?? "Default";
+
   function addLine() {
     const p = products.find((x) => x.id === productId);
     if (!p) return;
     const cantidad = Math.max(1, Number(qty) || 1);
+    const unit = productPrice(p, listId);
     setLines((prev) => {
       const existing = prev.find((l) => l.productId === p.id);
       if (existing) {
@@ -127,7 +134,7 @@ function NewOrderForm({
           productId: p.id,
           nombre: p.nombre,
           cantidad,
-          precioUnitario: p.precio,
+          precioUnitario: unit,
         },
       ];
     });
@@ -157,7 +164,10 @@ function NewOrderForm({
           id="cli"
           className="flex h-10 w-full rounded-lg border border-border bg-card px-3 text-sm"
           value={clientId}
-          onChange={(e) => setClientId(e.target.value)}
+          onChange={(e) => {
+            setClientId(e.target.value);
+            setLines([]);
+          }}
         >
           {clients.map((c) => (
             <option key={c.id} value={c.id}>
@@ -165,6 +175,9 @@ function NewOrderForm({
             </option>
           ))}
         </select>
+        <p className="text-xs text-muted-foreground">
+          Lista del cliente: {listName}
+        </p>
       </div>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <div className="flex-1 space-y-1.5">
@@ -177,7 +190,7 @@ function NewOrderForm({
           >
             {products.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.nombre} · {formatMxn(p.precio)}
+                {p.nombre} · {formatMxn(productPrice(p, listId))}
               </option>
             ))}
           </select>

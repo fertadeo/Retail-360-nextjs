@@ -2,11 +2,22 @@
 
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { listProducts } from "@/lib/store";
-import { CATEGORY_LABELS, type ProductCategory } from "@/lib/types";
+import {
+  getDefaultPriceListId,
+  getPriceList,
+  listPriceLists,
+  listProducts,
+} from "@/lib/store";
+import {
+  CATEGORY_LABELS,
+  productPrice,
+  type ProductCategory,
+} from "@/lib/types";
 import { formatMxn } from "@/lib/utils";
 
 export function CatalogGrid() {
+  const lists = listPriceLists(true);
+  const [priceListId, setPriceListId] = useState(getDefaultPriceListId());
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<ProductCategory | "todos">("todos");
   const items = useMemo(() => {
@@ -22,6 +33,8 @@ export function CatalogGrid() {
     });
   }, [q, cat]);
 
+  const listName = getPriceList(priceListId)?.nombre ?? "Default";
+
   return (
     <div className="space-y-6">
       <div>
@@ -32,7 +45,7 @@ export function CatalogGrid() {
           Catálogo
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Productos publicados para venta en mostrador y pedidos.
+          Precios según lista seleccionada ({listName}).
         </p>
       </div>
 
@@ -57,6 +70,18 @@ export function CatalogGrid() {
             </option>
           ))}
         </select>
+        <select
+          className="h-10 rounded-lg border border-border bg-card px-3 text-sm"
+          value={priceListId}
+          onChange={(e) => setPriceListId(e.target.value)}
+        >
+          {lists.map((pl) => (
+            <option key={pl.id} value={pl.id}>
+              {pl.nombre}
+              {pl.esDefault ? " (default)" : ""}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -76,7 +101,7 @@ export function CatalogGrid() {
             </p>
             <div className="mt-4 flex items-end justify-between">
               <p className="font-display text-xl font-semibold tabular-nums text-teal">
-                {formatMxn(p.precio)}
+                {formatMxn(productPrice(p, priceListId))}
               </p>
               <p className="text-xs text-muted-foreground">
                 Stock {p.stock}

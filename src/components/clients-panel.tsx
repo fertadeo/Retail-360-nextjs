@@ -4,7 +4,12 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { listClients, upsertClient } from "@/lib/store";
+import {
+  getPriceList,
+  listClients,
+  listPriceLists,
+  upsertClient,
+} from "@/lib/store";
 import type { Client } from "@/lib/types";
 
 export function ClientsPanel() {
@@ -66,6 +71,12 @@ export function ClientsPanel() {
                 {[c.email, c.telefono, c.rfc].filter(Boolean).join(" · ") ||
                   "Sin datos de contacto"}
               </p>
+              <p className="mt-0.5 text-xs text-teal">
+                Lista:{" "}
+                {c.priceListId
+                  ? getPriceList(c.priceListId)?.nombre ?? "—"
+                  : "Default del sistema"}
+              </p>
             </div>
             <Button
               type="button"
@@ -94,11 +105,13 @@ function ClientForm({
   onCancel: () => void;
   onSaved: () => void;
 }) {
+  const lists = listPriceLists(true);
   const [nombre, setNombre] = useState(initial?.nombre ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
   const [telefono, setTelefono] = useState(initial?.telefono ?? "");
   const [rfc, setRfc] = useState(initial?.rfc ?? "");
   const [notas, setNotas] = useState(initial?.notas ?? "");
+  const [priceListId, setPriceListId] = useState(initial?.priceListId ?? "");
   const [error, setError] = useState<string | null>(null);
 
   function save() {
@@ -111,6 +124,7 @@ function ClientForm({
         telefono,
         rfc,
         notas,
+        priceListId: priceListId || null,
       });
       onSaved();
     } catch (e) {
@@ -166,6 +180,22 @@ function ClientForm({
             value={notas}
             onChange={(e) => setNotas(e.target.value)}
           />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor="pl">Lista de precios</Label>
+          <select
+            id="pl"
+            className="flex h-10 w-full rounded-lg border border-border bg-card px-3 text-sm"
+            value={priceListId}
+            onChange={(e) => setPriceListId(e.target.value)}
+          >
+            <option value="">Default del sistema</option>
+            {lists.map((pl) => (
+              <option key={pl.id} value={pl.id}>
+                {pl.nombre}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}

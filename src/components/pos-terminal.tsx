@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   addPosSale,
+  getPriceList,
   listClients,
   listProducts,
+  resolveClientPriceListId,
 } from "@/lib/store";
-import type { OrderLine } from "@/lib/types";
+import { productPrice, type OrderLine } from "@/lib/types";
 import { formatMxn } from "@/lib/utils";
 
 export function PosTerminal() {
@@ -23,6 +25,9 @@ export function PosTerminal() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const priceListId = resolveClientPriceListId(clientId || null);
+  const listLabel = getPriceList(priceListId)?.nombre ?? "Default";
+
   const filtered = products.filter((p) => {
     if (!q.trim()) return true;
     const n = q.trim().toLowerCase();
@@ -36,9 +41,21 @@ export function PosTerminal() {
     0
   );
 
+  function rebuildCartForList(nextClientId: string) {
+    const listId = resolveClientPriceListId(nextClientId || null);
+    setCart((prev) =>
+      prev.map((l) => {
+        const p = products.find((x) => x.id === l.productId);
+        if (!p) return l;
+        return { ...l, precioUnitario: productPrice(p, listId) };
+      })
+    );
+  }
+
   function addToCart(productId: string) {
     const p = products.find((x) => x.id === productId);
     if (!p) return;
+    const unit = productPrice(p, priceListId);
     setCart((prev) => {
       const existing = prev.find((l) => l.productId === p.id);
       if (existing) {
@@ -52,7 +69,7 @@ export function PosTerminal() {
           productId: p.id,
           nombre: p.nombre,
           cantidad: 1,
-          precioUnitario: p.precio,
+          precioUnitario: unit,
         },
       ];
     });
@@ -76,9 +93,11 @@ export function PosTerminal() {
     setError(null);
     setMessage(null);
     try {
-      const sale = addPosSale(cart, clientId || null);
+      const sale = addPosSale(cart, clientId || null, priceListId);
       setCart([]);
-      setMessage(`Venta ${sale.folio} registrada · ${formatMxn(total)}`);
+      setMessage(
+        `Venta ${sale.folio} · ${listLabel} · ${formatMxn(total)}`
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo cobrar.");
     }
@@ -94,7 +113,8 @@ export function PosTerminal() {
           POS
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Tocá productos para armar el ticket y cobrá en mostrador.
+          Lista activa: <span className="font-medium text-teal">{listLabel}</span>
+          . Cambia con el cliente.
         </p>
       </div>
 
@@ -119,7 +139,7 @@ export function PosTerminal() {
                   {p.sku} · stock {p.stock}
                 </p>
                 <p className="mt-2 font-display text-lg font-semibold tabular-nums text-teal">
-                  {formatMxn(p.precio)}
+                  {formatMxn(productPrice(p, priceListId))}
                 </p>
               </button>
             ))}
@@ -138,7 +158,11 @@ export function PosTerminal() {
               id="pos-cli"
               className="h-9 w-full rounded-lg border border-white/15 bg-white/5 px-2 text-sm text-[#f2eee6]"
               value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setClientId(next);
+                rebuildCartForList(next);
+              }}
             >
               <option value="">Mostrador</option>
               {clients.map((c) => (

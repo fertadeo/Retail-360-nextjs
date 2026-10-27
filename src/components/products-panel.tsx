@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { listProducts, upsertProduct } from "@/lib/store";
+import { listPriceLists, listProducts, upsertProduct } from "@/lib/store";
 import {
   CATEGORY_LABELS,
   type Product,
@@ -75,7 +75,10 @@ export function ProductsPanel() {
               <th className="hidden px-4 py-3 font-medium sm:table-cell">
                 Categoría
               </th>
-              <th className="px-4 py-3 font-medium">Precio</th>
+              <th className="px-4 py-3 font-medium">Default</th>
+              <th className="hidden px-4 py-3 font-medium md:table-cell">
+                Listas
+              </th>
               <th className="px-4 py-3 font-medium">Stock</th>
               <th className="px-4 py-3 font-medium" />
             </tr>
@@ -89,6 +92,14 @@ export function ProductsPanel() {
                   {CATEGORY_LABELS[p.categoria]}
                 </td>
                 <td className="px-4 py-3 tabular-nums">{formatMxn(p.precio)}</td>
+                <td className="hidden px-4 py-3 text-xs text-muted-foreground md:table-cell">
+                  {listPriceLists(true)
+                    .map(
+                      (pl) =>
+                        `${pl.codigo} ${formatMxn(p.precios[pl.id] ?? p.precio)}`
+                    )
+                    .join(" · ")}
+                </td>
                 <td className="px-4 py-3 tabular-nums">{p.stock}</td>
                 <td className="px-4 py-3 text-right">
                   <button
@@ -128,12 +139,21 @@ function ProductEditor({
   onCancel: () => void;
   onSaved: () => void;
 }) {
+  const lists = listPriceLists(true);
   const [sku, setSku] = useState(initial?.sku ?? "");
   const [nombre, setNombre] = useState(initial?.nombre ?? "");
   const [categoria, setCategoria] = useState<ProductCategory>(
     initial?.categoria ?? "otros"
   );
-  const [precio, setPrecio] = useState(String(initial?.precio ?? 0));
+  const [precios, setPrecios] = useState<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    for (const pl of lists) {
+      map[pl.id] = String(
+        initial?.precios[pl.id] ?? initial?.precio ?? 0
+      );
+    }
+    return map;
+  });
   const [costo, setCosto] = useState(String(initial?.costo ?? 0));
   const [stock, setStock] = useState(String(initial?.stock ?? 0));
   const [descripcion, setDescripcion] = useState(initial?.descripcion ?? "");
@@ -143,12 +163,18 @@ function ProductEditor({
   function save() {
     setError(null);
     try {
+      const preciosNum: Record<string, number> = {};
+      for (const pl of lists) {
+        preciosNum[pl.id] = Number(precios[pl.id]) || 0;
+      }
+      const defaultList = lists.find((l) => l.esDefault) ?? lists[0];
       upsertProduct({
         id: initial?.id,
         sku,
         nombre,
         categoria,
-        precio: Number(precio) || 0,
+        precio: defaultList ? preciosNum[defaultList.id] ?? 0 : 0,
+        precios: preciosNum,
         costo: Number(costo) || 0,
         stock: Number(stock) || 0,
         descripcion,
@@ -199,14 +225,32 @@ function ProductEditor({
             onChange={(e) => setNombre(e.target.value)}
           />
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="precio">Precio</Label>
-          <Input
-            id="precio"
-            type="number"
-            value={precio}
-            onChange={(e) => setPrecio(e.target.value)}
-          />
+        <div className="space-y-2 sm:col-span-2">
+          <p className="text-sm font-medium">Precios por lista</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {lists.map((pl) => (
+              <div key={pl.id} className="space-y-1.5">
+                <Label htmlFor={`precio-${pl.id}`}>
+                  {pl.nombre}
+                  {pl.esDefault ? " (default)" : ""}
+                </Label>
+                <Input
+                  id={`precio-${pl.id}`}
+                  type="number"
+                  value={precios[pl.id] ?? "0"}
+                  onChange={(e) =>
+                    setPrecios((prev) => ({
+                      ...prev,
+                      [pl.id]: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Las listas se gestionan en Configuración.
+          </p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="costo">Costo</Label>

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Package,
+  Settings,
   ShoppingBag,
   Store,
   Users,
@@ -19,8 +20,8 @@ const NAV = [
   { href: "/clientes", label: "Clientes", icon: Users },
   { href: "/pedidos", label: "Pedidos", icon: Warehouse },
   { href: "/pos", label: "POS", icon: ShoppingBag },
+  { href: "/configuracion", label: "Configuración", icon: Settings },
 ];
-
 export function AppSidebar({
   mobileOpen,
   onClose,
