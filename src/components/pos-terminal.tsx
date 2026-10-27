@@ -1,7 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Printer } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeftRight,
+  Banknote,
+  CheckCircle2,
+  MapPin,
+  Phone,
+  Printer,
+  ShoppingBag,
+  Truck,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,13 +23,24 @@ import {
 } from "@/lib/store";
 import { printThermalTicket } from "@/lib/thermal-ticket";
 import {
+  PAYMENT_METHOD_LABELS,
   orderTotal,
   productPrice,
   type Order,
   type OrderLine,
   type PaymentMethod,
 } from "@/lib/types";
-import { formatMxn } from "@/lib/utils";
+import { cn, formatMxn } from "@/lib/utils";
+
+const fieldClass =
+  "h-10 border-white/12 bg-[#1a1714] text-[#f2eee6] placeholder:text-sand/40 focus-visible:ring-teal/40 [color-scheme:dark]";
+
+const selectClass = cn(
+  "flex h-10 w-full appearance-none rounded-lg border border-white/12 bg-[#1a1714] px-3 text-sm text-[#f2eee6] outline-none",
+  "focus-visible:ring-2 focus-visible:ring-teal/40 [color-scheme:dark]",
+  "bg-[length:1rem] bg-[right_0.65rem_center] bg-no-repeat",
+  "bg-[url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23cfc6b8%22 stroke-width=%222.5%22%3E%3Cpath d=%22m6 9 6 6 6-6%22/%3E%3C/svg%3E')]"
+);
 
 export function PosTerminal() {
   const products = useMemo(
@@ -38,9 +59,11 @@ export function PosTerminal() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastSale, setLastSale] = useState<Order | null>(null);
+  const [phase, setPhase] = useState<"editing" | "done">("editing");
 
   const priceListId = resolveClientPriceListId(clientId || null);
   const listLabel = getPriceList(priceListId)?.nombre ?? "Default";
+  const selectedClient = clients.find((c) => c.id === clientId) ?? null;
 
   const filtered = products.filter((p) => {
     if (!q.trim()) return true;
@@ -56,6 +79,7 @@ export function PosTerminal() {
   );
   const envioNum = conEnvio ? Math.max(0, Number(envioCosto) || 0) : 0;
   const total = subtotal + envioNum;
+  const itemCount = cart.reduce((a, l) => a + l.cantidad, 0);
 
   function applyClientDefaults(nextClientId: string) {
     const c = clients.find((x) => x.id === nextClientId);
@@ -80,6 +104,7 @@ export function PosTerminal() {
   }
 
   function addToCart(productId: string) {
+    if (phase === "done") startNewSale();
     const p = products.find((x) => x.id === productId);
     if (!p) return;
     const unit = productPrice(p, priceListId);
@@ -116,6 +141,14 @@ export function PosTerminal() {
     );
   }
 
+  function startNewSale() {
+    setPhase("editing");
+    setCart([]);
+    setMessage(null);
+    setError(null);
+    setLastSale(null);
+  }
+
   function checkout() {
     setError(null);
     setMessage(null);
@@ -131,6 +164,7 @@ export function PosTerminal() {
       });
       setLastSale(sale);
       setCart([]);
+      setPhase("done");
       setMessage(
         `Venta ${sale.folio} · ${listLabel} · ${formatMxn(orderTotal(sale))}`
       );
@@ -150,6 +184,18 @@ export function PosTerminal() {
     }
   }
 
+  function reprint() {
+    if (!lastSale) return;
+    try {
+      printThermalTicket(lastSale);
+      setError(null);
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "No se pudo abrir el ticket."
+      );
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -161,12 +207,12 @@ export function PosTerminal() {
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Lista activa:{" "}
-          <span className="font-medium text-teal">{listLabel}</span>. Con
-          envío se imprime ticket térmico (80 mm).
+          <span className="font-medium text-teal">{listLabel}</span>
+          {conEnvio ? " · Con envío imprime ticket térmico 80 mm." : "."}
         </p>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[1.35fr_1fr]">
+      <div className="grid gap-5 lg:grid-cols-[1.35fr_minmax(20rem,22rem)]">
         <section className="space-y-3">
           <Input
             value={q}
@@ -174,7 +220,7 @@ export function PosTerminal() {
             placeholder="Buscar producto o SKU…"
             autoFocus
           />
-          <div className="grid max-h-[28rem] gap-2 overflow-y-auto sm:grid-cols-2">
+          <div className="grid max-h-[min(36rem,70vh)] gap-2 overflow-y-auto sm:grid-cols-2">
             {filtered.map((p) => (
               <button
                 key={p.id}
@@ -194,214 +240,345 @@ export function PosTerminal() {
           </div>
         </section>
 
-        <section className="flex flex-col rounded-xl bg-[#2a2622] p-4 text-sand ring-1 ring-white/10">
-          <h2 className="font-display text-lg font-medium text-[#f2eee6]">
-            Ticket
-          </h2>
-
-          <div className="mt-3 space-y-3">
-            <div className="space-y-1.5">
-              <label className="text-xs text-sand/55" htmlFor="pos-cli">
-                Cliente {conEnvio ? "(recomendado)" : "(opcional)"}
-              </label>
-              <select
-                id="pos-cli"
-                className="h-9 w-full rounded-lg border border-white/15 bg-white/5 px-2 text-sm text-[#f2eee6]"
-                value={clientId}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setClientId(next);
-                  rebuildCartForList(next);
-                  applyClientDefaults(next);
-                }}
-              >
-                <option value="">Mostrador</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <span className="text-xs text-sand/55">Método de pago</span>
-              <div className="grid grid-cols-2 gap-2">
-                {(
-                  [
-                    ["efectivo", "Efectivo"],
-                    ["transferencia", "Transferencia"],
-                  ] as const
-                ).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setMetodoPago(value)}
-                    className={`h-9 rounded-lg text-sm transition ${
-                      metodoPago === value
-                        ? "bg-teal text-[#f2eee6]"
-                        : "border border-white/15 bg-white/5 text-sand/80 hover:bg-white/10"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-[#f2eee6]">
-              <input
-                type="checkbox"
-                className="size-4 accent-teal"
-                checked={conEnvio}
-                onChange={(e) => {
-                  const on = e.target.checked;
-                  setConEnvio(on);
-                  if (on && clientId) applyClientDefaults(clientId);
-                }}
-              />
-              Pedido con envío
-            </label>
-
-            {conEnvio ? (
-              <div className="space-y-2 rounded-lg border border-white/10 bg-black/20 p-3">
-                <div className="space-y-1">
-                  <label className="text-xs text-sand/55" htmlFor="pos-tel">
-                    Teléfono
-                  </label>
-                  <Input
-                    id="pos-tel"
-                    value={telefono}
-                    onChange={(e) => setTelefono(e.target.value)}
-                    className="h-9 border-white/15 bg-white/5 text-[#f2eee6] placeholder:text-sand/35"
-                    placeholder="55 …"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-sand/55" htmlFor="pos-dir">
-                    Dirección de entrega
-                  </label>
-                  <Input
-                    id="pos-dir"
-                    value={direccion}
-                    onChange={(e) => setDireccion(e.target.value)}
-                    className="h-9 border-white/15 bg-white/5 text-[#f2eee6] placeholder:text-sand/35"
-                    placeholder="Calle, colonia, ciudad…"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-sand/55" htmlFor="pos-env">
-                    Precio de envío
-                  </label>
-                  <Input
-                    id="pos-env"
-                    type="number"
-                    min={0}
-                    value={envioCosto}
-                    onChange={(e) => setEnvioCosto(e.target.value)}
-                    className="h-9 border-white/15 bg-white/5 text-[#f2eee6]"
-                  />
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          <ul className="mt-4 max-h-48 flex-1 space-y-2 overflow-y-auto">
-            {cart.map((l) => (
-              <li
-                key={l.productId}
-                className="flex items-center justify-between gap-2 text-sm"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-[#f2eee6]">{l.nombre}</p>
-                  <p className="text-xs text-sand/50">
-                    {formatMxn(l.precioUnitario)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="size-7 text-sand hover:bg-white/10"
-                    onClick={() => bump(l.productId, -1)}
-                  >
-                    −
-                  </Button>
-                  <span className="w-6 text-center tabular-nums">
-                    {l.cantidad}
-                  </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="size-7 text-sand hover:bg-white/10"
-                    onClick={() => bump(l.productId, 1)}
-                  >
-                    +
-                  </Button>
-                </div>
-              </li>
-            ))}
-            {cart.length === 0 ? (
-              <li className="py-8 text-center text-sm text-sand/45">
-                Ticket vacío
-              </li>
-            ) : null}
-          </ul>
-
-          <div className="mt-4 border-t border-white/10 pt-4">
-            <p className="flex justify-between text-sm text-sand/70">
-              <span>Subtotal</span>
-              <span className="tabular-nums">{formatMxn(subtotal)}</span>
-            </p>
-            {conEnvio ? (
-              <p className="mt-1 flex justify-between text-sm text-sand/70">
-                <span>Envío</span>
-                <span className="tabular-nums">{formatMxn(envioNum)}</span>
+        <section className="flex flex-col overflow-hidden rounded-2xl bg-[#241f1b] text-sand shadow-[0_12px_40px_-18px_rgba(31,28,25,0.55)] ring-1 ring-white/10">
+          <header className="flex items-start justify-between gap-3 border-b border-white/8 bg-[#2c2722] px-4 py-3.5">
+            <div>
+              <h2 className="font-display text-lg font-medium text-[#f2eee6]">
+                Ticket
+              </h2>
+              <p className="mt-0.5 text-xs text-sand/50">
+                {phase === "done" && lastSale
+                  ? lastSale.folio
+                  : itemCount
+                    ? `${itemCount} ítem${itemCount === 1 ? "" : "s"}`
+                    : "Sin productos"}
               </p>
-            ) : null}
-            <p className="mt-2 flex justify-between font-display text-xl font-semibold text-[#f2eee6]">
-              <span>Total</span>
-              <span className="tabular-nums">{formatMxn(total)}</span>
-            </p>
-            {error ? (
-              <p className="mt-2 text-sm text-red-300">{error}</p>
-            ) : null}
-            {message ? (
-              <p className="mt-2 text-sm text-[#5eead4]">{message}</p>
-            ) : null}
-            <Button
-              type="button"
-              className="mt-3 h-11 w-full"
-              disabled={!cart.length}
-              onClick={checkout}
-            >
-              {conEnvio ? "Cobrar e imprimir ticket" : "Cobrar"}
-            </Button>
-            {lastSale?.conEnvio ? (
+            </div>
+            <span className="rounded-md bg-teal/25 px-2 py-1 text-[11px] font-medium tracking-wide text-[#5eead4]">
+              {listLabel}
+            </span>
+          </header>
+
+          {phase === "done" && lastSale ? (
+            <div className="flex flex-1 flex-col gap-4 p-4">
+              <div className="rounded-xl border border-teal/30 bg-teal/10 px-4 py-5 text-center">
+                <CheckCircle2 className="mx-auto size-8 text-[#5eead4]" />
+                <p className="mt-2 font-display text-xl font-semibold text-[#f2eee6]">
+                  {lastSale.folio}
+                </p>
+                <p className="mt-1 text-sm text-sand/65">
+                  {lastSale.clienteNombre} ·{" "}
+                  {lastSale.metodoPago
+                    ? PAYMENT_METHOD_LABELS[lastSale.metodoPago]
+                    : "—"}
+                </p>
+                <p className="mt-3 font-display text-2xl font-semibold tabular-nums text-[#5eead4]">
+                  {formatMxn(orderTotal(lastSale))}
+                </p>
+                {lastSale.conEnvio ? (
+                  <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-sand/55">
+                    <Truck className="size-3.5" />
+                    Envío {formatMxn(lastSale.envioCosto)}
+                  </p>
+                ) : null}
+              </div>
+
+              {error ? (
+                <div className="flex gap-2 rounded-lg border border-red-400/25 bg-red-500/10 px-3 py-2.5 text-sm text-red-200">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                  <p>{error}</p>
+                </div>
+              ) : null}
+
+              {lastSale.conEnvio ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 w-full gap-2 border-white/20 bg-white/5 text-[#f2eee6] hover:bg-white/10 hover:text-[#f2eee6]"
+                  onClick={reprint}
+                >
+                  <Printer className="size-4" />
+                  Reimprimir ticket
+                </Button>
+              ) : null}
+
               <Button
                 type="button"
-                variant="outline"
-                className="mt-2 h-10 w-full gap-1.5 border-white/20 bg-transparent text-[#f2eee6] hover:bg-white/10"
-                onClick={() => {
-                  try {
-                    printThermalTicket(lastSale);
-                    setError(null);
-                  } catch (e) {
-                    setError(
-                      e instanceof Error
-                        ? e.message
-                        : "No se pudo abrir el ticket."
-                    );
-                  }
-                }}
+                className="h-11 w-full"
+                onClick={startNewSale}
               >
-                <Printer className="size-3.5" />
-                Reimprimir ticket {lastSale.folio}
+                Nueva venta
               </Button>
-            ) : null}
-          </div>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-3 px-4 pt-4">
+                <div className="space-y-1.5">
+                  <label
+                    className="text-[11px] font-medium uppercase tracking-[0.12em] text-sand/45"
+                    htmlFor="pos-cli"
+                  >
+                    Cliente {conEnvio ? "· requerido p/ envío" : ""}
+                  </label>
+                  <select
+                    id="pos-cli"
+                    className={selectClass}
+                    value={clientId}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setClientId(next);
+                      rebuildCartForList(next);
+                      applyClientDefaults(next);
+                    }}
+                  >
+                    <option value="">Mostrador</option>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedClient?.telefono ? (
+                    <p className="truncate text-[11px] text-sand/40">
+                      {selectedClient.telefono}
+                      {selectedClient.direccion
+                        ? ` · ${selectedClient.direccion}`
+                        : ""}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-sand/45">
+                    Pago
+                  </span>
+                  <div className="grid grid-cols-2 gap-1.5 rounded-lg bg-black/25 p-1">
+                    {(
+                      [
+                        ["efectivo", "Efectivo", Banknote],
+                        ["transferencia", "Transfer.", ArrowLeftRight],
+                      ] as const
+                    ).map(([value, label, Icon]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setMetodoPago(value)}
+                        className={cn(
+                          "flex h-9 items-center justify-center gap-1.5 rounded-md text-sm transition",
+                          metodoPago === value
+                            ? "bg-teal text-[#f2eee6] shadow-sm"
+                            : "text-sand/70 hover:bg-white/5 hover:text-[#f2eee6]"
+                        )}
+                      >
+                        <Icon className="size-3.5 opacity-80" />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const on = !conEnvio;
+                    setConEnvio(on);
+                    if (on && clientId) applyClientDefaults(clientId);
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left transition",
+                    conEnvio
+                      ? "border-teal/40 bg-teal/15"
+                      : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
+                  )}
+                >
+                  <span className="flex items-center gap-2 text-sm text-[#f2eee6]">
+                    <Truck
+                      className={cn(
+                        "size-4",
+                        conEnvio ? "text-[#5eead4]" : "text-sand/50"
+                      )}
+                    />
+                    Pedido con envío
+                  </span>
+                  <span
+                    className={cn(
+                      "relative h-5 w-9 rounded-full transition",
+                      conEnvio ? "bg-teal" : "bg-white/15"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "absolute top-0.5 size-4 rounded-full bg-[#f2eee6] transition",
+                        conEnvio ? "left-4" : "left-0.5"
+                      )}
+                    />
+                  </span>
+                </button>
+
+                {conEnvio ? (
+                  <div className="space-y-2.5 rounded-xl border border-white/10 bg-[#1a1714]/80 p-3">
+                    <div className="space-y-1">
+                      <label
+                        className="flex items-center gap-1 text-[11px] text-sand/50"
+                        htmlFor="pos-tel"
+                      >
+                        <Phone className="size-3" />
+                        Teléfono
+                      </label>
+                      <Input
+                        id="pos-tel"
+                        value={telefono}
+                        onChange={(e) => setTelefono(e.target.value)}
+                        className={fieldClass}
+                        placeholder="55 0000 0000"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label
+                        className="flex items-center gap-1 text-[11px] text-sand/50"
+                        htmlFor="pos-dir"
+                      >
+                        <MapPin className="size-3" />
+                        Dirección de entrega
+                      </label>
+                      <Input
+                        id="pos-dir"
+                        value={direccion}
+                        onChange={(e) => setDireccion(e.target.value)}
+                        className={fieldClass}
+                        placeholder="Calle, colonia, ciudad…"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label
+                        className="text-[11px] text-sand/50"
+                        htmlFor="pos-env"
+                      >
+                        Precio de envío
+                      </label>
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-sand/45">
+                          $
+                        </span>
+                        <Input
+                          id="pos-env"
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={envioCosto}
+                          onChange={(e) => setEnvioCosto(e.target.value)}
+                          className={cn(fieldClass, "pl-7 tabular-nums")}
+                        />
+                      </div>
+                      <p className="text-[11px] tabular-nums text-sand/40">
+                        {formatMxn(envioNum)}
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mx-4 mt-4 min-h-[7.5rem] flex-1 overflow-hidden rounded-xl border border-dashed border-white/10 bg-black/15">
+                {cart.length === 0 ? (
+                  <div className="flex h-full min-h-[7.5rem] flex-col items-center justify-center gap-1 px-4 py-6 text-center">
+                    <ShoppingBag className="size-5 text-sand/30" />
+                    <p className="text-sm text-sand/45">Ticket vacío</p>
+                    <p className="text-[11px] text-sand/30">
+                      Tocá un producto para agregarlo
+                    </p>
+                  </div>
+                ) : (
+                  <ul className="max-h-44 space-y-0 overflow-y-auto divide-y divide-white/6">
+                    {cart.map((l) => (
+                      <li
+                        key={l.productId}
+                        className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-[#f2eee6]">{l.nombre}</p>
+                          <p className="text-xs tabular-nums text-sand/45">
+                            {formatMxn(l.precioUnitario)} c/u
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-0.5 rounded-lg bg-white/5 p-0.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="size-7 text-sand hover:bg-white/10 hover:text-[#f2eee6]"
+                            onClick={() => bump(l.productId, -1)}
+                          >
+                            −
+                          </Button>
+                          <span className="w-7 text-center tabular-nums text-[#f2eee6]">
+                            {l.cantidad}
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="size-7 text-sand hover:bg-white/10 hover:text-[#f2eee6]"
+                            onClick={() => bump(l.productId, 1)}
+                          >
+                            +
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="mt-auto space-y-3 border-t border-white/8 bg-[#2c2722] px-4 py-4">
+                <div className="space-y-1 text-sm">
+                  <p className="flex justify-between text-sand/55">
+                    <span>Subtotal</span>
+                    <span className="tabular-nums text-sand/80">
+                      {formatMxn(subtotal)}
+                    </span>
+                  </p>
+                  {conEnvio ? (
+                    <p className="flex justify-between text-sand/55">
+                      <span>Envío</span>
+                      <span className="tabular-nums text-sand/80">
+                        {formatMxn(envioNum)}
+                      </span>
+                    </p>
+                  ) : null}
+                  <p className="flex justify-between pt-1 font-display text-xl font-semibold text-[#f2eee6]">
+                    <span>Total</span>
+                    <span className="tabular-nums">{formatMxn(total)}</span>
+                  </p>
+                </div>
+
+                {error ? (
+                  <div className="flex gap-2 rounded-lg border border-red-400/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                    <p>{error}</p>
+                  </div>
+                ) : null}
+                {message ? (
+                  <p className="text-sm text-[#5eead4]">{message}</p>
+                ) : null}
+
+                <Button
+                  type="button"
+                  className="h-11 w-full gap-2"
+                  disabled={!cart.length}
+                  onClick={checkout}
+                >
+                  {conEnvio ? (
+                    <>
+                      <Printer className="size-4" />
+                      Cobrar e imprimir
+                    </>
+                  ) : (
+                    "Cobrar"
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
         </section>
       </div>
     </div>
