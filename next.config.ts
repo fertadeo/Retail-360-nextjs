@@ -1,7 +1,14 @@
 import type { NextConfig } from "next";
 
+/**
+ * El browser en Vercel es HTTPS; el API en el VPS puede ser HTTP.
+ * Proxy same-origin /aurix-api → NEXT_PUBLIC_API_URL evita mixed content.
+ */
+const apiUpstream = (process.env.NEXT_PUBLIC_API_URL || "")
+  .trim()
+  .replace(/\/$/, "");
+
 const nextConfig: NextConfig = {
-  /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {
@@ -12,6 +19,15 @@ const nextConfig: NextConfig = {
         as: "*.css",
       },
     },
+  },
+  async rewrites() {
+    if (!apiUpstream) return [];
+    return [
+      {
+        source: "/aurix-api/:path*",
+        destination: `${apiUpstream}/:path*`,
+      },
+    ];
   },
 };
 
