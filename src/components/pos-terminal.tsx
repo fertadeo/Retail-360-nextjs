@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -31,6 +31,7 @@ import {
   type PaymentMethod,
 } from "@/lib/types";
 import { cn, formatMxn } from "@/lib/utils";
+import { useRetailQuery } from "@/lib/use-retail-query";
 
 const fieldClass =
   "h-10 border-white/12 bg-[#1a1714] text-[#f2eee6] placeholder:text-sand/40 focus-visible:ring-teal/40 [color-scheme:dark]";
@@ -43,11 +44,16 @@ const selectClass = cn(
 );
 
 export function PosTerminal() {
-  const products = useMemo(
-    () => listProducts().filter((p) => p.activo && p.stock > 0),
+  const {
+    data,
+    loading,
+    error: loadError,
+  } = useRetailQuery(
+    () => Promise.all([listProducts(), listClients()]),
     []
   );
-  const clients = useMemo(() => listClients(), []);
+  const products = (data?.[0] ?? []).filter((p) => p.activo && p.stock > 0);
+  const clients = data?.[1] ?? [];
   const [q, setQ] = useState("");
   const [cart, setCart] = useState<OrderLine[]>([]);
   const [clientId, setClientId] = useState("");
@@ -61,8 +67,17 @@ export function PosTerminal() {
   const [lastSale, setLastSale] = useState<Order | null>(null);
   const [phase, setPhase] = useState<"editing" | "done">("editing");
 
-  const priceListId = resolveClientPriceListId(clientId || null);
-  const listLabel = getPriceList(priceListId)?.nombre ?? "Default";
+  const {
+    data: priceData,
+    loading: priceLoading,
+    error: priceError,
+  } = useRetailQuery(async () => {
+    const priceListId = await resolveClientPriceListId(clientId || null);
+    const list = await getPriceList(priceListId);
+    return { priceListId, listLabel: list?.nombre ?? "Default" };
+  }, [clientId]);
+  const priceListId = priceData?.priceListId ?? null;
+  const listLabel = priceData?.listLabel ?? "Default";
   const selectedClient = clients.find((c) => c.id === clientId) ?? null;
 
   const filtered = products.filter((p) => {
@@ -92,8 +107,8 @@ export function PosTerminal() {
     }
   }
 
-  function rebuildCartForList(nextClientId: string) {
-    const listId = resolveClientPriceListId(nextClientId || null);
+  async function rebuildCartForList(nextClientId: string) {
+    const listId = await resolveClientPriceListId(nextClientId || null);
     setCart((prev) =>
       prev.map((l) => {
         const p = products.find((x) => x.id === l.productId);
@@ -149,11 +164,11 @@ export function PosTerminal() {
     setLastSale(null);
   }
 
-  function checkout() {
+  async function checkout() {
     setError(null);
     setMessage(null);
     try {
-      const sale = addPosSale(cart, {
+      const sale = await addPosSale(cart, {
         clientId: clientId || null,
         priceListId,
         conEnvio,
@@ -215,6 +230,11 @@ export function PosTerminal() {
           {conEnvio ? " · Con envío imprime ticket térmico 80 mm." : "."}
         </p>
       </div>
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Cargando productos y clientes…</p>
+      ) : loadError || priceError ? (
+        <p className="text-sm text-destructive">{loadError ?? priceError}</p>
+      ) : null}
 
       <div className="grid gap-5 lg:grid-cols-[1.35fr_minmax(20rem,22rem)]">
         <section className="space-y-3">
@@ -330,7 +350,7 @@ export function PosTerminal() {
                     onChange={(e) => {
                       const next = e.target.value;
                       setClientId(next);
-                      rebuildCartForList(next);
+                      void rebuildCartForList(next);
                       applyClientDefaults(next);
                     }}
                   >
@@ -567,8 +587,8 @@ export function PosTerminal() {
                 <Button
                   type="button"
                   className="h-11 w-full gap-2"
-                  disabled={!cart.length}
-                  onClick={checkout}
+                  disabled={!cart.length || loading || priceLoading}
+                  onClick={() => void checkout()}
                 >
                   {conEnvio ? (
                     <>

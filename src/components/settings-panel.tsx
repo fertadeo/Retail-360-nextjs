@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,27 +11,27 @@ import {
   upsertPriceList,
 } from "@/lib/store";
 import type { PriceList } from "@/lib/types";
+import { useRetailQuery } from "@/lib/use-retail-query";
 
 export function SettingsPanel() {
-  const [tick, setTick] = useState(0);
-  const lists = useMemo(() => {
-    void tick;
-    return listPriceLists();
-  }, [tick]);
-  const defaultId = useMemo(() => {
-    void tick;
-    return getDefaultPriceListId();
-  }, [tick]);
+  const {
+    data,
+    loading,
+    error: loadError,
+    reload,
+  } = useRetailQuery(
+    () => Promise.all([listPriceLists(), getDefaultPriceListId()]),
+    []
+  );
+  const lists = data?.[0] ?? [];
+  const defaultId = data?.[1] ?? "";
 
   const [nombre, setNombre] = useState("");
   const [codigo, setCodigo] = useState("");
   const [editing, setEditing] = useState<PriceList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-
-  function refresh() {
-    setTick((t) => t + 1);
-  }
+  const [saving, setSaving] = useState(false);
 
   function startCreate() {
     setEditing(null);
@@ -49,11 +49,12 @@ export function SettingsPanel() {
     setMessage(null);
   }
 
-  function save() {
+  async function save() {
     setError(null);
     setMessage(null);
+    setSaving(true);
     try {
-      upsertPriceList({
+      await upsertPriceList({
         id: editing?.id,
         nombre,
         codigo: codigo || undefined,
@@ -64,36 +65,44 @@ export function SettingsPanel() {
       setEditing(null);
       setNombre("");
       setCodigo("");
-      refresh();
+      reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar.");
+    } finally {
+      setSaving(false);
     }
   }
 
-  function toggleActive(pl: PriceList) {
+  async function toggleActive(pl: PriceList) {
     setError(null);
+    setSaving(true);
     try {
-      upsertPriceList({
+      await upsertPriceList({
         id: pl.id,
         nombre: pl.nombre,
         codigo: pl.codigo,
         activa: !pl.activa,
         esDefault: pl.esDefault,
       });
-      refresh();
+      reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo cambiar.");
+    } finally {
+      setSaving(false);
     }
   }
 
-  function makeDefault(pl: PriceList) {
+  async function makeDefault(pl: PriceList) {
     setError(null);
+    setSaving(true);
     try {
-      setDefaultPriceList(pl.id);
+      await setDefaultPriceList(pl.id);
       setMessage(`Default: ${pl.nombre}`);
-      refresh();
+      reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo definir default.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -132,6 +141,11 @@ export function SettingsPanel() {
         </div>
 
         <ul className="divide-y divide-border/60 overflow-hidden rounded-lg ring-1 ring-border/60">
+          {loading ? (
+            <li className="px-4 py-3 text-sm text-muted-foreground">Cargando listas…</li>
+          ) : loadError ? (
+            <li className="px-4 py-3 text-sm text-destructive">{loadError}</li>
+          ) : null}
           {lists.map((pl) => (
             <li
               key={pl.id}
@@ -170,7 +184,7 @@ export function SettingsPanel() {
                     size="sm"
                     variant="ghost"
                     disabled={!pl.activa}
-                    onClick={() => makeDefault(pl)}
+                    onClick={() => void makeDefault(pl)}
                   >
                     Hacer default
                   </Button>
@@ -179,7 +193,8 @@ export function SettingsPanel() {
                   type="button"
                   size="sm"
                   variant="ghost"
-                  onClick={() => toggleActive(pl)}
+                  disabled={saving}
+                  onClick={() => void toggleActive(pl)}
                 >
                   {pl.activa ? "Desactivar" : "Activar"}
                 </Button>
@@ -192,7 +207,7 @@ export function SettingsPanel() {
           className="space-y-3 border-t border-border/60 pt-4"
           onSubmit={(e) => {
             e.preventDefault();
-            save();
+            void save();
           }}
         >
           <h3 className="text-sm font-medium">
@@ -226,8 +241,12 @@ export function SettingsPanel() {
             <p className="text-sm text-teal">{message}</p>
           ) : null}
           <div className="flex gap-2">
-            <Button type="submit">
-              {editing ? "Guardar cambios" : "Crear lista"}
+            <Button type="submit" disabled={loading || saving}>
+              {saving
+                ? "Guardando…"
+                : editing
+                  ? "Guardar cambios"
+                  : "Crear lista"}
             </Button>
             {editing ? (
               <Button type="button" variant="outline" onClick={startCreate}>

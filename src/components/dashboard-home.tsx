@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { buttonVariants } from "@/components/ui/button";
+import { isApiMode } from "@/lib/api-config";
 import { dashboardStats, listOrders } from "@/lib/store";
+import { useRetailQuery } from "@/lib/use-retail-query";
 import { ORDER_STATUS_LABELS, orderTotal } from "@/lib/types";
 import { cn, formatMxn } from "@/lib/utils";
 
@@ -12,8 +14,11 @@ export function DashboardHome() {
   useEffect(() => {
     setToday(new Date().toISOString().slice(0, 10));
   }, []);
-  const stats = useMemo(() => dashboardStats(today), [today]);
-  const recent = useMemo(() => listOrders().slice(0, 5), []);
+
+  const statsQ = useRetailQuery(() => dashboardStats(today), [today]);
+  const ordersQ = useRetailQuery(() => listOrders(), []);
+  const stats = statsQ.data;
+  const recent = (ordersQ.data ?? []).slice(0, 5);
 
   return (
     <div className="space-y-8">
@@ -26,8 +31,10 @@ export function DashboardHome() {
             Mostrador
           </h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Catálogo, carga de productos, clientes, pedidos y caja POS — listo
-            para conectar con la API del gold.
+            Catálogo, productos, clientes, pedidos y caja POS.
+            {isApiMode()
+              ? " Conectado al API del cliente."
+              : " Modo demo en memoria (sin NEXT_PUBLIC_API_URL)."}
           </p>
         </div>
         <Link
@@ -39,11 +46,29 @@ export function DashboardHome() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="Ventas hoy" value={formatMxn(stats.ventasHoy)} />
-        <Kpi label="Productos activos" value={String(stats.productos)} />
-        <Kpi label="Pedidos abiertos" value={String(stats.pedidosAbiertos)} />
-        <Kpi label="Stock bajo" value={String(stats.stockBajo)} />
+        <Kpi
+          label="Ventas hoy"
+          value={stats ? formatMxn(stats.ventasHoy) : "…"}
+        />
+        <Kpi
+          label="Productos activos"
+          value={stats ? String(stats.productos) : "…"}
+        />
+        <Kpi
+          label="Pedidos abiertos"
+          value={stats ? String(stats.pedidosAbiertos) : "…"}
+        />
+        <Kpi
+          label="Stock bajo"
+          value={stats ? String(stats.stockBajo) : "…"}
+        />
       </div>
+
+      {(statsQ.error || ordersQ.error) && (
+        <p className="text-sm text-destructive">
+          {statsQ.error || ordersQ.error}
+        </p>
+      )}
 
       <section className="overflow-hidden rounded-xl bg-card/90 ring-1 ring-border/70">
         <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
@@ -55,6 +80,11 @@ export function DashboardHome() {
           </Link>
         </div>
         <ul className="divide-y divide-border/60">
+          {ordersQ.loading && !recent.length ? (
+            <li className="px-5 py-8 text-center text-sm text-muted-foreground">
+              Cargando…
+            </li>
+          ) : null}
           {recent.map((o) => (
             <li
               key={o.id}
@@ -73,6 +103,11 @@ export function DashboardHome() {
               </p>
             </li>
           ))}
+          {!ordersQ.loading && recent.length === 0 ? (
+            <li className="px-5 py-8 text-center text-sm text-muted-foreground">
+              Sin movimientos aún.
+            </li>
+          ) : null}
         </ul>
       </section>
     </div>

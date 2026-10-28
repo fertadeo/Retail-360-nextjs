@@ -5,6 +5,7 @@ import { Printer, QrCode, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { listPriceLists } from "@/lib/store";
+import { useRetailQuery } from "@/lib/use-retail-query";
 import {
   barcodeSvgDataUrl,
   printProductLabel,
@@ -34,7 +35,11 @@ export function ProductDetailModal({
   const [printError, setPrintError] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
 
-  const lists = listPriceLists(true);
+  const {
+    data: lists,
+    loading: listsLoading,
+    error: listsError,
+  } = useRetailQuery(() => listPriceLists(true), []);
   const code = productBarcodeValue(product);
 
   useEffect(() => {
@@ -160,7 +165,7 @@ export function ProductDetailModal({
               Precios por lista
             </p>
             <ul className="mt-2 space-y-1.5 text-sm">
-              {lists.map((pl) => (
+              {(lists ?? []).map((pl) => (
                 <li
                   key={pl.id}
                   className="flex justify-between gap-2 tabular-nums"
@@ -174,6 +179,11 @@ export function ProductDetailModal({
                   </span>
                 </li>
               ))}
+              {listsLoading ? (
+                <li className="text-muted-foreground">Cargando…</li>
+              ) : listsError ? (
+                <li className="text-destructive">{listsError}</li>
+              ) : null}
             </ul>
           </div>
 

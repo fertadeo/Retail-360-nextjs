@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import {
   getDefaultPriceListId,
-  getPriceList,
   listPriceLists,
   listProducts,
 } from "@/lib/store";
@@ -14,14 +13,35 @@ import {
   type ProductCategory,
 } from "@/lib/types";
 import { formatMxn } from "@/lib/utils";
+import { useRetailQuery } from "@/lib/use-retail-query";
 
 export function CatalogGrid() {
-  const lists = listPriceLists(true);
-  const [priceListId, setPriceListId] = useState(getDefaultPriceListId());
+  const {
+    data,
+    loading,
+    error,
+  } = useRetailQuery(
+    () =>
+      Promise.all([
+        listPriceLists(true),
+        listProducts(),
+        getDefaultPriceListId(),
+      ]),
+    []
+  );
+  const lists = data?.[0] ?? [];
+  const products = data?.[1] ?? [];
+  const defaultPriceListId = data?.[2] ?? "";
+  const [priceListId, setPriceListId] = useState("");
+  useEffect(() => {
+    if (!priceListId && defaultPriceListId) {
+      setPriceListId(defaultPriceListId);
+    }
+  }, [defaultPriceListId, priceListId]);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<ProductCategory | "todos">("todos");
   const items = useMemo(() => {
-    return listProducts().filter((p) => {
+    return products.filter((p) => {
       if (!p.activo) return false;
       if (cat !== "todos" && p.categoria !== cat) return false;
       if (!q.trim()) return true;
@@ -31,9 +51,9 @@ export function CatalogGrid() {
         p.sku.toLowerCase().includes(needle)
       );
     });
-  }, [q, cat]);
+  }, [products, q, cat]);
 
-  const listName = getPriceList(priceListId)?.nombre ?? "Default";
+  const listName = lists.find((list) => list.id === priceListId)?.nombre ?? "Default";
 
   return (
     <div className="space-y-6">
@@ -48,6 +68,12 @@ export function CatalogGrid() {
           Precios según lista seleccionada ({listName}).
         </p>
       </div>
+
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Cargando catálogo…</p>
+      ) : error ? (
+        <p className="text-sm text-destructive">{error}</p>
+      ) : null}
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <Input

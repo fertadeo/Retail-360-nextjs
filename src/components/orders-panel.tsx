@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,13 +22,15 @@ import {
   type OrderLine,
 } from "@/lib/types";
 import { formatMxn } from "@/lib/utils";
+import { useRetailQuery } from "@/lib/use-retail-query";
 
 export function OrdersPanel() {
-  const [tick, setTick] = useState(0);
-  const orders = useMemo(() => {
-    void tick;
-    return listOrders();
-  }, [tick]);
+  const {
+    data: orders,
+    loading,
+    error,
+    reload,
+  } = useRetailQuery(() => listOrders(), []);
   const [open, setOpen] = useState(false);
 
   return (
@@ -60,12 +62,17 @@ export function OrdersPanel() {
           onCancel={() => setOpen(false)}
           onSaved={() => {
             setOpen(false);
-            setTick((t) => t + 1);
+            reload();
           }}
         />
       ) : null}
 
       <div className="overflow-hidden rounded-xl bg-card/90 ring-1 ring-border/70">
+        {loading ? (
+          <p className="px-4 py-6 text-sm text-muted-foreground">Cargando pedidos…</p>
+        ) : error ? (
+          <p className="px-4 py-6 text-sm text-destructive">{error}</p>
+        ) : null}
         <table className="w-full text-left text-sm">
           <thead className="border-b border-border/60 text-xs uppercase tracking-[0.1em] text-muted-foreground">
             <tr>
@@ -78,7 +85,7 @@ export function OrdersPanel() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60">
-            {orders.map((o) => (
+            {(orders ?? []).map((o) => (
               <tr key={o.id}>
                 <td className="px-4 py-3 font-mono text-xs">{o.folio}</td>
                 <td className="px-4 py-3">
@@ -135,16 +142,37 @@ function NewOrderForm({
   onCancel: () => void;
   onSaved: () => void;
 }) {
-  const clients = listClients();
-  const products = listProducts().filter((p) => p.activo);
-  const [clientId, setClientId] = useState(clients[0]?.id ?? "");
-  const [productId, setProductId] = useState(products[0]?.id ?? "");
+  const {
+    data,
+    loading,
+    error: loadError,
+  } = useRetailQuery(
+    () => Promise.all([listClients(), listProducts()]),
+    []
+  );
+  const clients = data?.[0] ?? [];
+  const products = (data?.[1] ?? []).filter((p) => p.activo);
+  const [clientId, setClientId] = useState("");
+  const [productId, setProductId] = useState("");
   const [qty, setQty] = useState("1");
   const [lines, setLines] = useState<OrderLine[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const listId = resolveClientPriceListId(clientId);
-  const listName = getPriceList(listId)?.nombre ?? "Default";
+  useEffect(() => {
+    if (!clientId && clients[0]) setClientId(clients[0].id);
+    if (!productId && products[0]) setProductId(products[0].id);
+  }, [clientId, clients, productId, products]);
+  const {
+    data: priceData,
+    loading: priceLoading,
+    error: priceError,
+  } = useRetailQuery(async () => {
+    const listId = await resolveClientPriceListId(clientId);
+    const list = await getPriceList(listId);
+    return { listId, listName: list?.nombre ?? "Default" };
+  }, [clientId]);
+  const listId = priceData?.listId ?? null;
+  const listName = priceData?.listName ?? "Default";
 
   function addLine() {
     const p = products.find((x) => x.id === productId);
@@ -172,10 +200,10 @@ function NewOrderForm({
     });
   }
 
-  function save() {
+  async function save() {
     setError(null);
     try {
-      addPedido(clientId, lines);
+      await addPedido(clientId, lines);
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo crear.");
@@ -190,6 +218,11 @@ function NewOrderForm({
   return (
     <div className="space-y-4 rounded-xl bg-card/90 p-5 ring-1 ring-border/70">
       <h2 className="font-display text-lg font-medium">Nuevo pedido</h2>
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Cargando datos…</p>
+      ) : loadError || priceError ? (
+        <p className="text-sm text-destructive">{loadError ?? priceError}</p>
+      ) : null}
       <div className="space-y-1.5">
         <Label htmlFor="cli">Cliente</Label>
         <select
@@ -266,7 +299,11 @@ function NewOrderForm({
       </p>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <div className="flex gap-2">
-        <Button type="button" onClick={save}>
+        <Button
+          type="button"
+          disabled={loading || priceLoading}
+          onClick={() => void save()}
+        >
           Confirmar pedido
         </Button>
         <Button type="button" variant="outline" onClick={onCancel}>

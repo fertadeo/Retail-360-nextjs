@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Building2,
@@ -31,6 +31,7 @@ import {
   type OrderLine,
 } from "@/lib/types";
 import { cn, formatMxn } from "@/lib/utils";
+import { useRetailQuery } from "@/lib/use-retail-query";
 
 function fmtWhen(iso: string): string {
   try {
@@ -44,23 +45,27 @@ function fmtWhen(iso: string): string {
 }
 
 export function MayoristaPanel() {
-  const [tick, setTick] = useState(0);
-  const clients = useMemo(() => {
-    void tick;
-    return listClients();
-  }, [tick]);
-  const products = useMemo(() => {
-    void tick;
-    return listProducts().filter((p) => p.activo);
-  }, [tick]);
-  const history = useMemo(() => {
-    void tick;
-    return listMayoristaOrders();
-  }, [tick]);
-
-  const listOk = Boolean(getPriceList(PRICE_LIST_MAYORISTA)?.activa);
-  const listLabel =
-    getPriceList(PRICE_LIST_MAYORISTA)?.nombre ?? "Mayorista";
+  const {
+    data,
+    loading,
+    error: loadError,
+    reload,
+  } = useRetailQuery(
+    () =>
+      Promise.all([
+        listClients(),
+        listProducts(),
+        listMayoristaOrders(),
+        getPriceList(PRICE_LIST_MAYORISTA),
+      ]),
+    []
+  );
+  const clients = data?.[0] ?? [];
+  const products = (data?.[1] ?? []).filter((p) => p.activo);
+  const history = data?.[2] ?? [];
+  const wholesaleList = data?.[3];
+  const listOk = Boolean(wholesaleList?.activa);
+  const listLabel = wholesaleList?.nombre ?? "Mayorista";
 
   const sortedClients = useMemo(() => {
     return [...clients].sort((a, b) => {
@@ -83,6 +88,10 @@ export function MayoristaPanel() {
   const [error, setError] = useState<string | null>(null);
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [phase, setPhase] = useState<"editing" | "done">("editing");
+  useEffect(() => {
+    if (!clientId && preferred) setClientId(preferred.id);
+    if (!productId && products[0]) setProductId(products[0].id);
+  }, [clientId, preferred, productId, products]);
 
   const selectedClient = clients.find((c) => c.id === clientId) ?? null;
   const selectedProduct = products.find((p) => p.id === productId) ?? null;
@@ -146,14 +155,14 @@ export function MayoristaPanel() {
     );
   }
 
-  function confirm() {
+  async function confirm() {
     setError(null);
     try {
-      const order = addMayoristaPedido(clientId, lines);
+      const order = await addMayoristaPedido(clientId, lines);
       setLastOrder(order);
       setLines([]);
       setPhase("done");
-      setTick((t) => t + 1);
+      reload();
       try {
         emitPdf(order);
       } catch {
@@ -206,6 +215,12 @@ export function MayoristaPanel() {
           </span>
         </div>
       </div>
+
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Cargando datos mayoristas…</p>
+      ) : loadError ? (
+        <p className="text-sm text-destructive">{loadError}</p>
+      ) : null}
 
       {!listOk ? (
         <div className="flex gap-2 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -489,7 +504,7 @@ export function MayoristaPanel() {
                   type="button"
                   className="h-11 min-w-[10rem] gap-1.5"
                   disabled={!listOk || !lines.length || !clientId}
-                  onClick={confirm}
+                  onClick={() => void confirm()}
                 >
                   <FileDown className="size-4" />
                   Confirmar y PDF
@@ -540,8 +555,8 @@ export function MayoristaPanel() {
                       size="sm"
                       variant="outline"
                       className="shrink-0 gap-1.5"
-                      onClick={() => {
-                        const fresh = getOrder(o.id) ?? o;
+                      onClick={async () => {
+                        const fresh = (await getOrder(o.id)) ?? o;
                         emitPdf(fresh);
                       }}
                     >

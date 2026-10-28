@@ -1,23 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  getPriceList,
-  listClients,
-  listPriceLists,
-  upsertClient,
-} from "@/lib/store";
+import { listClients, listPriceLists, upsertClient } from "@/lib/store";
 import type { Client } from "@/lib/types";
+import { useRetailQuery } from "@/lib/use-retail-query";
 
 export function ClientsPanel() {
-  const [tick, setTick] = useState(0);
-  const clients = useMemo(() => {
-    void tick;
-    return listClients();
-  }, [tick]);
+  const {
+    data,
+    loading,
+    error,
+    reload,
+  } = useRetailQuery(
+    () => Promise.all([listClients(), listPriceLists(true)]),
+    []
+  );
+  const clients = data?.[0] ?? [];
+  const lists = data?.[1] ?? [];
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
 
@@ -54,12 +56,17 @@ export function ClientsPanel() {
           onCancel={() => setFormOpen(false)}
           onSaved={() => {
             setFormOpen(false);
-            setTick((t) => t + 1);
+            reload();
           }}
         />
       ) : null}
 
       <ul className="divide-y divide-border/70 overflow-hidden rounded-xl bg-card/90 ring-1 ring-border/70">
+        {loading ? (
+          <li className="px-5 py-4 text-sm text-muted-foreground">Cargando clientes…</li>
+        ) : error ? (
+          <li className="px-5 py-4 text-sm text-destructive">{error}</li>
+        ) : null}
         {clients.map((c) => (
           <li
             key={c.id}
@@ -79,7 +86,7 @@ export function ClientsPanel() {
               <p className="mt-0.5 text-xs text-teal">
                 Lista:{" "}
                 {c.priceListId
-                  ? getPriceList(c.priceListId)?.nombre ?? "—"
+                  ? lists.find((list) => list.id === c.priceListId)?.nombre ?? "—"
                   : "Default del sistema"}
               </p>
             </div>
@@ -110,7 +117,11 @@ function ClientForm({
   onCancel: () => void;
   onSaved: () => void;
 }) {
-  const lists = listPriceLists(true);
+  const {
+    data: lists,
+    loading,
+    error: loadError,
+  } = useRetailQuery(() => listPriceLists(true), []);
   const [nombre, setNombre] = useState(initial?.nombre ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
   const [telefono, setTelefono] = useState(initial?.telefono ?? "");
@@ -119,11 +130,13 @@ function ClientForm({
   const [notas, setNotas] = useState(initial?.notas ?? "");
   const [priceListId, setPriceListId] = useState(initial?.priceListId ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  function save() {
+  async function save() {
     setError(null);
+    setSaving(true);
     try {
-      upsertClient({
+      await upsertClient({
         id: initial?.id,
         nombre,
         email,
@@ -136,6 +149,8 @@ function ClientForm({
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -144,7 +159,7 @@ function ClientForm({
       className="space-y-4 rounded-xl bg-card/90 p-5 ring-1 ring-border/70"
       onSubmit={(e) => {
         e.preventDefault();
-        save();
+        void save();
       }}
     >
       <h2 className="font-display text-lg font-medium">
@@ -206,7 +221,7 @@ function ClientForm({
             onChange={(e) => setPriceListId(e.target.value)}
           >
             <option value="">Default del sistema</option>
-            {lists.map((pl) => (
+            {(lists ?? []).map((pl) => (
               <option key={pl.id} value={pl.id}>
                 {pl.nombre}
               </option>
@@ -215,8 +230,11 @@ function ClientForm({
         </div>
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {loadError ? <p className="text-sm text-destructive">{loadError}</p> : null}
       <div className="flex gap-2">
-        <Button type="submit">Guardar</Button>
+        <Button type="submit" disabled={loading || saving}>
+          {saving ? "Guardando…" : "Guardar"}
+        </Button>
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancelar
         </Button>

@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { QrCode } from "lucide-react";
 import { ProductDetailModal } from "@/components/product-detail-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { listPriceLists, listProducts, upsertProduct } from "@/lib/store";
+import { useRetailQuery } from "@/lib/use-retail-query";
 import {
   CATEGORY_LABELS,
   type Product,
@@ -18,11 +19,16 @@ import { formatMxn } from "@/lib/utils";
 const CATS = Object.keys(CATEGORY_LABELS) as ProductCategory[];
 
 export function ProductsPanel() {
-  const [tick, setTick] = useState(0);
-  const products = useMemo(() => {
-    void tick;
-    return listProducts();
-  }, [tick]);
+  const {
+    data: products,
+    loading,
+    error,
+    reload,
+  } = useRetailQuery(() => listProducts(), []);
+  const { data: lists, error: listsError } = useRetailQuery(
+    () => listPriceLists(true),
+    []
+  );
   const [editing, setEditing] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
   const [detail, setDetail] = useState<Product | null>(null);
@@ -65,7 +71,7 @@ export function ProductsPanel() {
           onSaved={() => {
             setCreating(false);
             setEditing(null);
-            setTick((t) => t + 1);
+            reload();
           }}
         />
       ) : null}
@@ -83,6 +89,13 @@ export function ProductsPanel() {
       ) : null}
 
       <div className="overflow-hidden rounded-xl bg-card/90 ring-1 ring-border/70">
+        {loading ? (
+          <p className="px-4 py-6 text-sm text-muted-foreground">Cargando productos…</p>
+        ) : error || listsError ? (
+          <p className="px-4 py-6 text-sm text-destructive">
+            {error ?? listsError}
+          </p>
+        ) : null}
         <table className="w-full text-left text-sm">
           <thead className="border-b border-border/60 text-xs uppercase tracking-[0.1em] text-muted-foreground">
             <tr>
@@ -100,7 +113,7 @@ export function ProductsPanel() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60">
-            {products.map((p) => (
+            {(products ?? []).map((p) => (
               <tr
                 key={p.id}
                 className={!p.activo ? "opacity-50" : undefined}
@@ -120,7 +133,7 @@ export function ProductsPanel() {
                 </td>
                 <td className="px-4 py-3 tabular-nums">{formatMxn(p.precio)}</td>
                 <td className="hidden px-4 py-3 text-xs text-muted-foreground md:table-cell">
-                  {listPriceLists(true)
+                  {(lists ?? [])
                     .map(
                       (pl) =>
                         `${pl.codigo} ${formatMxn(p.precios[pl.id] ?? p.precio)}`
@@ -177,7 +190,11 @@ function ProductEditor({
   onCancel: () => void;
   onSaved: () => void;
 }) {
-  const lists = listPriceLists(true);
+  const {
+    data: lists,
+    loading,
+    error: loadError,
+  } = useRetailQuery(() => listPriceLists(true), []);
   const [sku, setSku] = useState(initial?.sku ?? "");
   const [nombre, setNombre] = useState(initial?.nombre ?? "");
   const [categoria, setCategoria] = useState<ProductCategory>(
@@ -185,28 +202,44 @@ function ProductEditor({
   );
   const [precios, setPrecios] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
-    for (const pl of lists) {
+    for (const pl of lists ?? []) {
       map[pl.id] = String(
         initial?.precios[pl.id] ?? initial?.precio ?? 0
       );
     }
     return map;
   });
+  useEffect(() => {
+    if (!lists) return;
+    setPrecios((current) => {
+      const next = { ...current };
+      for (const pl of lists) {
+        if (next[pl.id] == null) {
+          next[pl.id] = String(
+            initial?.precios[pl.id] ?? initial?.precio ?? 0
+          );
+        }
+      }
+      return next;
+    });
+  }, [initial, lists]);
   const [costo, setCosto] = useState(String(initial?.costo ?? 0));
   const [stock, setStock] = useState(String(initial?.stock ?? 0));
   const [descripcion, setDescripcion] = useState(initial?.descripcion ?? "");
   const [activo, setActivo] = useState(initial?.activo ?? true);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  function save() {
+  async function save() {
     setError(null);
+    setSaving(true);
     try {
       const preciosNum: Record<string, number> = {};
-      for (const pl of lists) {
+      for (const pl of lists ?? []) {
         preciosNum[pl.id] = Number(precios[pl.id]) || 0;
       }
-      const defaultList = lists.find((l) => l.esDefault) ?? lists[0];
-      upsertProduct({
+      const defaultList = lists?.find((l) => l.esDefault) ?? lists?.[0];
+      await upsertProduct({
         id: initial?.id,
         sku,
         nombre,
@@ -221,6 +254,8 @@ function ProductEditor({
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -229,7 +264,7 @@ function ProductEditor({
       className="space-y-4 rounded-xl bg-card/90 p-5 ring-1 ring-border/70"
       onSubmit={(e) => {
         e.preventDefault();
-        save();
+        void save();
       }}
     >
       <h2 className="font-display text-lg font-medium text-charcoal">
@@ -266,7 +301,7 @@ function ProductEditor({
         <div className="space-y-2 sm:col-span-2">
           <p className="text-sm font-medium">Precios por lista</p>
           <div className="grid gap-3 sm:grid-cols-2">
-            {lists.map((pl) => (
+            {(lists ?? []).map((pl) => (
               <div key={pl.id} className="space-y-1.5">
                 <Label htmlFor={`precio-${pl.id}`}>
                   {pl.nombre}
@@ -330,8 +365,13 @@ function ProductEditor({
       {error ? (
         <p className="text-sm text-destructive">{error}</p>
       ) : null}
+      {loadError ? (
+        <p className="text-sm text-destructive">{loadError}</p>
+      ) : null}
       <div className="flex gap-2">
-        <Button type="submit">Guardar</Button>
+        <Button type="submit" disabled={loading || saving}>
+          {saving ? "Guardando…" : "Guardar"}
+        </Button>
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancelar
         </Button>
