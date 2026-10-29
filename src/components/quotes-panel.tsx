@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, type QuotePayload } from "@/lib/api-client";
 import { isApiMode } from "@/lib/api-config";
+import { downloadPresupuestoPdf } from "@/lib/presupuesto-pdf";
 import { useRetailQuery } from "@/lib/use-retail-query";
 import {
   QUOTE_STATUS_LABELS,
@@ -124,6 +125,7 @@ export function QuotesPanel() {
       {tab === "list" ? (
         <QuotesList
           quotes={quotes}
+          lists={lists}
           onEdit={startEdit}
           onReload={reload}
         />
@@ -157,16 +159,23 @@ export function QuotesPanel() {
 
 function QuotesList({
   quotes,
+  lists,
   onEdit,
   onReload,
 }: {
   quotes: Quote[];
+  lists: PriceList[];
   onEdit: (id: string) => void;
   onReload: () => void;
 }) {
   async function setStatus(id: string, status: QuoteStatus) {
     await api.setQuoteStatus(id, status);
     onReload();
+  }
+
+  function downloadPdf(q: Quote) {
+    const priceList = lists.find((l) => l.id === q.priceListId) ?? null;
+    downloadPresupuestoPdf({ quote: q, priceList });
   }
 
   return (
@@ -196,6 +205,14 @@ function QuotesList({
               </td>
               <td className="px-4 py-3 text-right">
                 <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => downloadPdf(q)}
+                  >
+                    PDF
+                  </Button>
                   <Button
                     type="button"
                     size="sm"
@@ -290,10 +307,12 @@ function QuoteEditor({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [folio, setFolio] = useState<string | null>(null);
+  const [loadedQuote, setLoadedQuote] = useState<Quote | null>(null);
 
   useEffect(() => {
     if (!quoteId || !isApiMode()) return;
     void api.getQuote(quoteId).then((q) => {
+      setLoadedQuote(q);
       setFolio(q.folio);
       setClientId(q.clientId ?? "");
       setClienteNombre(q.clienteNombre);
@@ -428,8 +447,11 @@ function QuoteEditor({
     setSaving(true);
     setError(null);
     try {
-      if (quoteId) await api.updateQuote(quoteId, payload);
-      else await api.createQuote(payload);
+      const saved = quoteId
+        ? await api.updateQuote(quoteId, payload)
+        : await api.createQuote(payload);
+      setLoadedQuote(saved);
+      setFolio(saved.folio);
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar.");
@@ -448,6 +470,23 @@ function QuoteEditor({
           <Button type="button" variant="outline" onClick={onCancel}>
             Volver
           </Button>
+          {loadedQuote ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                downloadPresupuestoPdf({
+                  quote: loadedQuote,
+                  priceList:
+                    lists.find((l) => l.id === loadedQuote.priceListId) ??
+                    lists.find((l) => l.id === priceListId) ??
+                    null,
+                })
+              }
+            >
+              Descargar PDF
+            </Button>
+          ) : null}
           <Button type="button" disabled={saving} onClick={() => void save()}>
             {saving ? "Guardando…" : "Guardar"}
           </Button>
