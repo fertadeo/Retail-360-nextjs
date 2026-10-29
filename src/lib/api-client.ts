@@ -482,4 +482,32 @@ export const api = {
 
   deleteQuote: (id: string) =>
     request<void>(`/quotes/${id}`, { method: "DELETE" }),
+
+  listMedia: (params?: { kind?: "image" | "attachment" | "all"; q?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.kind && params.kind !== "all") sp.set("kind", params.kind);
+    if (params?.q) sp.set("q", params.q);
+    const qs = sp.toString();
+    return request<{
+      items: import("@/lib/media-library").MediaLibraryItem[];
+      counts: import("@/lib/media-library").MediaLibraryCounts;
+    }>(`/media${qs ? `?${qs}` : ""}`);
+  },
+
+  createMedia: (body: {
+    productId?: string | null;
+    kind?: "image" | "attachment";
+    filename: string;
+    mime: string;
+    sizeBytes: number;
+    dataUrl: string | null;
+    title?: string;
+  }) =>
+    request<import("@/lib/media-library").MediaLibraryItem>("/media", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  deleteMedia: (id: string) =>
+    request<void>(`/media/${id}`, { method: "DELETE" }),
 };

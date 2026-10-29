@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Building2,
   FileText,
+  Images,
   LayoutDashboard,
   MapPin,
   Package,
@@ -23,6 +24,7 @@ const NAV = [
   { href: "/productos", label: "Productos", icon: Package },
   { href: "/clientes", label: "Clientes", icon: Users },
   { href: "/presupuestos", label: "Presupuestos", icon: FileText },
+  { href: "/biblioteca", label: "Biblioteca", icon: Images },
   { href: "/pedidos", label: "Pedidos", icon: Warehouse },
   { href: "/mayorista", label: "Mayorista", icon: Building2 },
   { href: "/pos", label: "POS", icon: ShoppingBag },
