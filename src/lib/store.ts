@@ -6,7 +6,17 @@
 import { api } from "@/lib/api-client";
 import { isApiMode } from "@/lib/api-config";
 import * as memory from "@/lib/memory-store";
-import type { Client, Order, PriceList, Product } from "@/lib/types";
+import type {
+  Branch,
+  Channel,
+  ChannelConfig,
+  ChannelLink,
+  Client,
+  Order,
+  PriceList,
+  Product,
+  StockMode,
+} from "@/lib/types";
 
 export {
   PRICE_LIST_MAYORISTA,
@@ -203,4 +213,104 @@ export async function listMayoristaOrders(): Promise<Order[]> {
 export async function dashboardStats(todayIso?: string) {
   if (!isApiMode()) return memory.dashboardStats(todayIso);
   return api.dashboardStats(todayIso);
+}
+
+export async function listBranches(onlyActive = false): Promise<Branch[]> {
+  if (!isApiMode()) return memory.listBranches(onlyActive);
+  return api.listBranches(onlyActive);
+}
+
+export async function upsertBranch(input: {
+  id?: string;
+  codigo: string;
+  nombre: string;
+  direccion?: string;
+  activa?: boolean;
+  esDefault?: boolean;
+}): Promise<Branch> {
+  if (!isApiMode()) return memory.upsertBranch(input);
+  if (input.id) {
+    return api.updateBranch(input.id, {
+      codigo: input.codigo,
+      nombre: input.nombre,
+      direccion: input.direccion,
+      activa: input.activa,
+      esDefault: input.esDefault,
+    });
+  }
+  return api.createBranch(input);
+}
+
+export async function setDefaultBranch(id: string): Promise<Branch> {
+  if (!isApiMode()) return memory.setDefaultBranch(id);
+  return api.setDefaultBranch(id);
+}
+
+export async function listChannels(): Promise<ChannelConfig[]> {
+  if (!isApiMode()) return memory.listChannels();
+  return api.listChannels();
+}
+
+export async function saveChannel(
+  channel: Channel,
+  body: {
+    enabled?: boolean;
+    storeUrl?: string | null;
+    consumerKey?: string | null;
+    consumerSecret?: string | null;
+    accessToken?: string | null;
+    refreshToken?: string | null;
+    sellerId?: string | null;
+    siteId?: string | null;
+    priceListId?: string | null;
+    stockMode?: StockMode;
+    stockBranchId?: string | null;
+  }
+): Promise<ChannelConfig> {
+  if (!isApiMode()) return memory.saveChannel(channel, body);
+  return api.saveChannel(channel, body);
+}
+
+export async function upsertProductChannelLink(
+  productId: string,
+  channel: Channel,
+  body: { externalId: string; externalSku?: string; syncEnabled?: boolean }
+): Promise<ChannelLink> {
+  if (!isApiMode()) {
+    return memory.upsertProductChannelLink(productId, channel, body);
+  }
+  return api.upsertProductChannelLink(productId, channel, body);
+}
+
+export async function pushWooProduct(
+  productId: string,
+  mode: "stock" | "price" | "both" | "full" = "both"
+) {
+  if (!isApiMode()) throw new Error("Sync requiere API remota.");
+  return api.pushWooProduct(productId, mode);
+}
+
+export async function pushMeliProduct(
+  productId: string,
+  mode: "stock" | "price" | "both" = "both"
+) {
+  if (!isApiMode()) throw new Error("Sync requiere API remota.");
+  return api.pushMeliProduct(productId, mode);
+}
+
+export async function linkWooBySku() {
+  if (!isApiMode()) throw new Error("Sync requiere API remota.");
+  return api.linkWooBySku();
+}
+
+export async function pushWooAll(
+  mode: "stock" | "price" | "both" | "full" = "both"
+) {
+  if (!isApiMode()) throw new Error("Sync requiere API remota.");
+  return api.pushWooAll(mode);
+}
+
+export async function pushMeliAll(mode: "stock" | "price" | "both" = "both") {
+  if (!isApiMode()) throw new Error("Sync requiere API remota.");
+  return api.pushMeliAll(mode);
 }

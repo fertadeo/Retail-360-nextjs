@@ -7,7 +7,15 @@ import { ProductDetailModal } from "@/components/product-detail-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { listPriceLists, listProducts, upsertProduct } from "@/lib/store";
+import {
+  listPriceLists,
+  listProducts,
+  pushMeliProduct,
+  pushWooProduct,
+  upsertProduct,
+  upsertProductChannelLink,
+  usingRemoteApi,
+} from "@/lib/store";
 import { useRetailQuery } from "@/lib/use-retail-query";
 import {
   CATEGORY_LABELS,
@@ -32,6 +40,35 @@ export function ProductsPanel() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
   const [detail, setDetail] = useState<Product | null>(null);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [syncBusy, setSyncBusy] = useState<string | null>(null);
+
+  async function syncChannel(
+    productId: string,
+    channel: "woocommerce" | "mercadolibre"
+  ) {
+    if (!usingRemoteApi()) {
+      setSyncMsg("Sync requiere API remota (NEXT_PUBLIC_API_URL).");
+      return;
+    }
+    const key = `${channel}:${productId}`;
+    setSyncBusy(key);
+    setSyncMsg(null);
+    try {
+      if (channel === "woocommerce") {
+        const r = await pushWooProduct(productId, "both");
+        setSyncMsg(`WC #${r.externalId}: stock ${r.stock} · $${r.price}`);
+      } else {
+        const r = await pushMeliProduct(productId, "both");
+        setSyncMsg(`ML ${r.externalId}: stock ${r.stock} · $${r.price}`);
+      }
+      reload();
+    } catch (e) {
+      setSyncMsg(e instanceof Error ? e.message : "Error de sync.");
+    } finally {
+      setSyncBusy(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -44,7 +81,7 @@ export function ProductsPanel() {
             Productos
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Alta, ficha con QR/barcode e impresión térmica de etiquetas.
+            Alta, ficha QR y sync a WooCommerce / Mercado Libre.
           </p>
         </div>
         <Button
@@ -86,6 +123,12 @@ export function ProductsPanel() {
             setDetail(null);
           }}
         />
+      ) : null}
+
+      {syncMsg ? (
+        <p className="rounded-lg bg-tealSoft/60 px-3 py-2 text-sm text-charcoal">
+          {syncMsg}
+        </p>
       ) : null}
 
       <div className="overflow-hidden rounded-xl bg-card/90 ring-1 ring-border/70">
@@ -142,7 +185,25 @@ export function ProductsPanel() {
                 </td>
                 <td className="px-4 py-3 tabular-nums">{p.stock}</td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-3">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-teal hover:underline disabled:opacity-40"
+                      disabled={Boolean(syncBusy)}
+                      title="Empujar a WooCommerce"
+                      onClick={() => void syncChannel(p.id, "woocommerce")}
+                    >
+                      {syncBusy === `woocommerce:${p.id}` ? "…" : "WC"}
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-amber-700 hover:underline disabled:opacity-40"
+                      disabled={Boolean(syncBusy)}
+                      title="Empujar a Mercado Libre"
+                      onClick={() => void syncChannel(p.id, "mercadolibre")}
+                    >
+                      {syncBusy === `mercadolibre:${p.id}` ? "…" : "ML"}
+                    </button>
                     <button
                       type="button"
                       className="inline-flex items-center gap-1 text-sm font-medium text-teal hover:underline"
@@ -227,6 +288,14 @@ function ProductEditor({
   const [stock, setStock] = useState(String(initial?.stock ?? 0));
   const [descripcion, setDescripcion] = useState(initial?.descripcion ?? "");
   const [activo, setActivo] = useState(initial?.activo ?? true);
+  const [wooId, setWooId] = useState(
+    initial?.channelLinks?.find((l) => l.channel === "woocommerce")
+      ?.externalId ?? ""
+  );
+  const [meliId, setMeliId] = useState(
+    initial?.channelLinks?.find((l) => l.channel === "mercadolibre")
+      ?.externalId ?? ""
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -239,7 +308,7 @@ function ProductEditor({
         preciosNum[pl.id] = Number(precios[pl.id]) || 0;
       }
       const defaultList = lists?.find((l) => l.esDefault) ?? lists?.[0];
-      await upsertProduct({
+      const saved = await upsertProduct({
         id: initial?.id,
         sku,
         nombre,
@@ -251,6 +320,18 @@ function ProductEditor({
         descripcion,
         activo,
       });
+      if (wooId.trim()) {
+        await upsertProductChannelLink(saved.id, "woocommerce", {
+          externalId: wooId.trim(),
+          externalSku: sku,
+        });
+      }
+      if (meliId.trim()) {
+        await upsertProductChannelLink(saved.id, "mercadolibre", {
+          externalId: meliId.trim(),
+          externalSku: sku,
+        });
+      }
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar.");
@@ -359,6 +440,24 @@ function ProductEditor({
             id="desc"
             value={descripcion}
             onChange={(e) => setDescripcion(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="woo-id">ID WooCommerce</Label>
+          <Input
+            id="woo-id"
+            value={wooId}
+            onChange={(e) => setWooId(e.target.value)}
+            placeholder="vacío = crear al empujar"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="meli-id">Ítem Mercado Libre</Label>
+          <Input
+            id="meli-id"
+            value={meliId}
+            onChange={(e) => setMeliId(e.target.value)}
+            placeholder="MLA…"
           />
         </div>
       </div>

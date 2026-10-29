@@ -2,7 +2,17 @@
  * Store en memoria — fallback local cuando no hay NEXT_PUBLIC_API_URL.
  */
 
-import type { Client, Order, PriceList, Product } from "@/lib/types";
+import type {
+  Branch,
+  Channel,
+  ChannelConfig,
+  ChannelLink,
+  Client,
+  Order,
+  PriceList,
+  Product,
+  StockMode,
+} from "@/lib/types";
 import { orderTotal, productPrice } from "@/lib/types";
 
 export const PRICE_LIST_MINORISTA = "pl_minorista";
@@ -652,4 +662,178 @@ export function dashboardStats(todayIso?: string) {
     ventasHoy,
     stockBajo,
   };
+}
+
+let branches: Branch[] = [
+  {
+    id: "br_central",
+    codigo: "central",
+    nombre: "Casa central",
+    direccion: "",
+    activa: true,
+    esDefault: true,
+  },
+];
+
+let channelConfigs: ChannelConfig[] = [
+  {
+    channel: "woocommerce",
+    enabled: false,
+    storeUrl: null,
+    consumerKey: null,
+    consumerSecretSet: false,
+    consumerSecretMasked: null,
+    accessTokenSet: false,
+    accessTokenMasked: null,
+    sellerId: null,
+    siteId: "MLA",
+    priceListId: null,
+    stockMode: "total",
+    stockBranchId: null,
+    lastSyncAt: null,
+    configured: false,
+  },
+  {
+    channel: "mercadolibre",
+    enabled: false,
+    storeUrl: null,
+    consumerKey: null,
+    consumerSecretSet: false,
+    consumerSecretMasked: null,
+    accessTokenSet: false,
+    accessTokenMasked: null,
+    sellerId: null,
+    siteId: "MLA",
+    priceListId: null,
+    stockMode: "total",
+    stockBranchId: null,
+    lastSyncAt: null,
+    configured: false,
+  },
+];
+
+const productLinks = new Map<string, ChannelLink[]>();
+
+export function listBranches(onlyActive = false): Branch[] {
+  return onlyActive ? branches.filter((b) => b.activa) : [...branches];
+}
+
+export function upsertBranch(input: {
+  id?: string;
+  codigo: string;
+  nombre: string;
+  direccion?: string;
+  activa?: boolean;
+  esDefault?: boolean;
+}): Branch {
+  if (input.esDefault) {
+    branches = branches.map((b) => ({ ...b, esDefault: false }));
+  }
+  if (input.id) {
+    const idx = branches.findIndex((b) => b.id === input.id);
+    if (idx < 0) throw new Error("Sucursal no encontrada.");
+    const next: Branch = {
+      ...branches[idx],
+      codigo: input.codigo,
+      nombre: input.nombre,
+      direccion: input.direccion ?? "",
+      activa: input.activa ?? true,
+      esDefault: input.esDefault ?? branches[idx].esDefault,
+    };
+    branches[idx] = next;
+    return next;
+  }
+  const created: Branch = {
+    id: `br_${Date.now()}`,
+    codigo: input.codigo,
+    nombre: input.nombre,
+    direccion: input.direccion ?? "",
+    activa: input.activa ?? true,
+    esDefault: Boolean(input.esDefault),
+  };
+  branches = [...branches, created];
+  return created;
+}
+
+export function setDefaultBranch(id: string): Branch {
+  branches = branches.map((b) => ({
+    ...b,
+    esDefault: b.id === id,
+    activa: b.id === id ? true : b.activa,
+  }));
+  const found = branches.find((b) => b.id === id);
+  if (!found) throw new Error("Sucursal no encontrada.");
+  return found;
+}
+
+export function listChannels(): ChannelConfig[] {
+  return channelConfigs.map((c) => ({ ...c }));
+}
+
+export function saveChannel(
+  channel: Channel,
+  body: {
+    enabled?: boolean;
+    storeUrl?: string | null;
+    consumerKey?: string | null;
+    consumerSecret?: string | null;
+    accessToken?: string | null;
+    refreshToken?: string | null;
+    sellerId?: string | null;
+    siteId?: string | null;
+    priceListId?: string | null;
+    stockMode?: StockMode;
+    stockBranchId?: string | null;
+  }
+): ChannelConfig {
+  channelConfigs = channelConfigs.map((c) => {
+    if (c.channel !== channel) return c;
+    const next: ChannelConfig = {
+      ...c,
+      enabled: body.enabled ?? c.enabled,
+      storeUrl: body.storeUrl !== undefined ? body.storeUrl : c.storeUrl,
+      consumerKey:
+        body.consumerKey !== undefined ? body.consumerKey : c.consumerKey,
+      consumerSecretSet: body.consumerSecret
+        ? true
+        : c.consumerSecretSet,
+      accessTokenSet: body.accessToken ? true : c.accessTokenSet,
+      sellerId: body.sellerId !== undefined ? body.sellerId : c.sellerId,
+      siteId: body.siteId ?? c.siteId,
+      priceListId:
+        body.priceListId !== undefined ? body.priceListId : c.priceListId,
+      stockMode: body.stockMode ?? c.stockMode,
+      stockBranchId:
+        body.stockBranchId !== undefined
+          ? body.stockBranchId
+          : c.stockBranchId,
+    };
+    next.configured =
+      channel === "woocommerce"
+        ? Boolean(next.storeUrl && next.consumerKey && next.consumerSecretSet)
+        : next.accessTokenSet;
+    return next;
+  });
+  return channelConfigs.find((c) => c.channel === channel)!;
+}
+
+export function upsertProductChannelLink(
+  productId: string,
+  channel: Channel,
+  body: { externalId: string; externalSku?: string; syncEnabled?: boolean }
+): ChannelLink {
+  const link: ChannelLink = {
+    productId,
+    channel,
+    externalId: body.externalId,
+    externalSku: body.externalSku ?? "",
+    syncEnabled: body.syncEnabled !== false,
+    lastSyncedAt: null,
+    lastError: null,
+  };
+  const prev = (productLinks.get(productId) ?? []).filter(
+    (l) => l.channel !== channel
+  );
+  productLinks.set(productId, [...prev, link]);
+  return link;
 }

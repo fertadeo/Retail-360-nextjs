@@ -1,11 +1,13 @@
-# template-retail
+# Retail 360 (Next.js)
 
-Gold **Aurix Retail** (frontend Next.js). Catálogo, productos, clientes, pedidos, POS y mayorista.
+Frontend gold **Retail 360** — misma línea visual que `template-retail`, con **sucursales** y sync de productos a **WooCommerce** y **Mercado Libre**.
+
+Base: `fertadeo/template-retail`. Destino de provision: este repo.
 
 ## Stack
 
 - Next.js 16 · React 19 · Tailwind CSS 4 · TypeScript
-- Datos vía API (`NEXT_PUBLIC_API_URL`) o fallback en memoria (`src/lib/memory-store.ts`)
+- Datos vía API (`NEXT_PUBLIC_API_URL`) o fallback en memoria
 
 ## Desarrollo
 
@@ -18,32 +20,22 @@ npm run dev
 
 App en [http://127.0.0.1:3851](http://127.0.0.1:3851).
 
-Sin `NEXT_PUBLIC_API_URL` corre en **modo demo** (memoria).  
-Con URL apunta al gold API (`/api/*` de `template-retail-api`).
-
-## Conexión al API (alta Fenec)
-
-En cada instancia, el front debe buildarse con:
-
-```
-NEXT_PUBLIC_API_URL=https://api-{slug}.aurixerp.com
-```
-
-El cliente HTTP está en `src/lib/api-client.ts`; `src/lib/store.ts` enruta a API o memoria.
-
 ## Módulos
 
 | Ruta | Uso |
 |------|-----|
-| `/` | Dashboard / KPIs |
-| `/catalogo` | Vitrina de productos activos |
-| `/productos` | SKUs + ficha QR/barcode |
-| `/clientes` | Agenda de clientes |
-| `/pedidos` | Pedidos + historial POS |
-| `/pos` | Terminal de caja (envío + ticket térmico) |
-| `/mayorista` | Pedidos B2B + boleta PDF Aurix |
+| `/` | Dashboard |
+| `/catalogo` | Vitrina |
+| `/productos` | SKUs + push WC/ML |
+| `/clientes` | Agenda |
+| `/pedidos` | Pedidos + POS |
+| `/pos` | Terminal de caja |
+| `/mayorista` | B2B |
+| `/sucursales` | Multisucursal |
+| `/canales` | Credenciales y sync WooCommerce / Mercado Libre |
 | `/configuracion` | Listas de precios |
 
-## Template GitHub
+## Gold Fenec
 
-Marcado como **Template repository** para el alta (`repoTemplateFront`).
+- Front: `fertadeo/Retail-360-nextjs`
+- API: `fertadeo/Retail-360-api`

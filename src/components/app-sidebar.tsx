@@ -5,7 +5,9 @@ import { usePathname } from "next/navigation";
 import {
   Building2,
   LayoutDashboard,
+  MapPin,
   Package,
+  Radio,
   Settings,
   ShoppingBag,
   Store,
@@ -22,6 +24,8 @@ const NAV = [
   { href: "/pedidos", label: "Pedidos", icon: Warehouse },
   { href: "/mayorista", label: "Mayorista", icon: Building2 },
   { href: "/pos", label: "POS", icon: ShoppingBag },
+  { href: "/sucursales", label: "Sucursales", icon: MapPin },
+  { href: "/canales", label: "Canales", icon: Radio },
   { href: "/configuracion", label: "Configuración", icon: Settings },
 ];
 export function AppSidebar({
@@ -54,7 +58,7 @@ export function AppSidebar({
             <p className="font-display text-2xl font-semibold tracking-tight text-[#f2eee6]">
               Aurix<span className="text-[#5eead4]">.</span>
             </p>
-            <p className="mt-0.5 text-xs text-sand/60">Retail · mostrador</p>
+            <p className="mt-0.5 text-xs text-sand/60">Retail 360</p>
           </Link>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
@@ -82,7 +86,7 @@ export function AppSidebar({
           })}
         </nav>
         <div className="border-t border-white/10 px-4 py-4 text-xs text-sand/50">
-          Gold template · datos en memoria
+          Retail 360 · WooCommerce · ML
         </div>
       </aside>
     </>
