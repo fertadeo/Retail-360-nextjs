@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Building2,
+  FileText,
   LayoutDashboard,
   MapPin,
   Package,
@@ -21,9 +22,11 @@ const NAV = [
   { href: "/catalogo", label: "Catálogo", icon: Store },
   { href: "/productos", label: "Productos", icon: Package },
   { href: "/clientes", label: "Clientes", icon: Users },
+  { href: "/presupuestos", label: "Presupuestos", icon: FileText },
   { href: "/pedidos", label: "Pedidos", icon: Warehouse },
   { href: "/mayorista", label: "Mayorista", icon: Building2 },
   { href: "/pos", label: "POS", icon: ShoppingBag },
+  { href: "/comercios", label: "Comercios", icon: Store },
   { href: "/sucursales", label: "Sucursales", icon: MapPin },
   { href: "/canales", label: "Canales", icon: Radio },
   { href: "/configuracion", label: "Configuración", icon: Settings },
@@ -58,7 +61,7 @@ export function AppSidebar({
             <p className="font-display text-2xl font-semibold tracking-tight text-[#f2eee6]">
               Aurix<span className="text-[#5eead4]">.</span>
             </p>
-            <p className="mt-0.5 text-xs text-sand/60">Retail 360</p>
+            <p className="mt-0.5 text-xs text-sand/60">Retail · mostrador</p>
           </Link>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">

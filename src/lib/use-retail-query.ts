@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useComercioId } from "@/lib/comercio-context";
 
 export function useRetailQuery<T>(
   loader: () => Promise<T>,
   deps: unknown[] = []
 ) {
+  const comercioId = useComercioId();
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,7 +39,7 @@ export function useRetailQuery<T>(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick, ...deps]);
+  }, [tick, comercioId, ...deps]);
 
   return { data, error, loading, reload, setData };
 }

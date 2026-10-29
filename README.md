@@ -30,8 +30,10 @@ App en [http://127.0.0.1:3851](http://127.0.0.1:3851).
 | `/clientes` | Agenda |
 | `/pedidos` | Pedidos + POS |
 | `/pos` | Terminal de caja |
+| `/presupuestos` | Presupuestos + reglas de descuento escalonado |
 | `/mayorista` | B2B |
-| `/sucursales` | Multisucursal |
+| `/comercios` | Unidades de negocio + share/rotación de stock |
+| `/sucursales` | Sucursales físicas |
 | `/canales` | Credenciales y sync WooCommerce / Mercado Libre |
 | `/configuracion` | Listas de precios |
 
