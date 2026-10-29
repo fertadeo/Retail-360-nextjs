@@ -39,30 +39,33 @@ export function QuotesPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const { data, loading, error, reload } = useRetailQuery(
-    () =>
-      isApiMode()
-        ? Promise.all([
-            api.listQuotes(),
-            api.listPriceLists(true),
-            api.listDiscountRules(true),
-            api.listProducts(),
-            api.listClients(),
-          ])
-        : Promise.resolve([
-            [] as Quote[],
-            [] as PriceList[],
-            [] as DiscountRule[],
-            [] as Product[],
-            [] as Client[],
-          ]),
+    async () => {
+      if (!isApiMode()) {
+        return {
+          quotes: [] as Quote[],
+          lists: [] as PriceList[],
+          rules: [] as DiscountRule[],
+          products: [] as Product[],
+          clients: [] as Client[],
+        };
+      }
+      const [quotes, lists, rules, products, clients] = await Promise.all([
+        api.listQuotes(),
+        api.listPriceLists(true),
+        api.listDiscountRules(true),
+        api.listProducts(),
+        api.listClients(),
+      ]);
+      return { quotes, lists, rules, products, clients };
+    },
     []
   );
 
-  const quotes = data?.[0] ?? [];
-  const lists = data?.[1] ?? [];
-  const rules = data?.[2] ?? [];
-  const products = data?.[3] ?? [];
-  const clients = data?.[4] ?? [];
+  const quotes = data?.quotes ?? [];
+  const lists = data?.lists ?? [];
+  const rules = data?.rules ?? [];
+  const products = data?.products ?? [];
+  const clients = data?.clients ?? [];
 
   function startNew() {
     setEditingId(null);
