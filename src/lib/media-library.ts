@@ -25,6 +25,9 @@ export type MediaLibraryCounts = {
   images: number;
   attachments: number;
   total: number;
+  totalBytes?: number;
+  imagesBytes?: number;
+  attachmentsBytes?: number;
 };
 
 export type MediaLibraryResponse = {

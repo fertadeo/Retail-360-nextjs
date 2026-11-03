@@ -36,10 +36,27 @@ type TabId = MediaKind;
 const memoryItems: MediaLibraryItem[] = [];
 
 function countsOf(items: MediaLibraryItem[]): MediaLibraryCounts {
+  let images = 0;
+  let attachments = 0;
+  let imagesBytes = 0;
+  let attachmentsBytes = 0;
+  for (const item of items) {
+    const bytes = Math.max(0, Number(item.sizeBytes) || 0);
+    if (item.kind === "image") {
+      images += 1;
+      imagesBytes += bytes;
+    } else {
+      attachments += 1;
+      attachmentsBytes += bytes;
+    }
+  }
   return {
-    images: items.filter((i) => i.kind === "image").length,
-    attachments: items.filter((i) => i.kind === "attachment").length,
+    images,
+    attachments,
     total: items.length,
+    totalBytes: imagesBytes + attachmentsBytes,
+    imagesBytes,
+    attachmentsBytes,
   };
 }
 
@@ -50,6 +67,9 @@ export function MediaLibrary() {
     images: 0,
     attachments: 0,
     total: 0,
+    totalBytes: 0,
+    imagesBytes: 0,
+    attachmentsBytes: 0,
   });
   const [query, setQuery] = useState("");
   const [ready, setReady] = useState(false);
@@ -98,7 +118,14 @@ export function MediaLibrary() {
       setCounts(data.counts);
     } catch (err) {
       setItems([]);
-      setCounts({ images: 0, attachments: 0, total: 0 });
+      setCounts({
+        images: 0,
+        attachments: 0,
+        total: 0,
+        totalBytes: 0,
+        imagesBytes: 0,
+        attachmentsBytes: 0,
+      });
       setError(err instanceof Error ? err.message : "Error al cargar.");
     } finally {
       setReady(true);
@@ -263,9 +290,20 @@ export function MediaLibrary() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Images className="size-4 text-teal" />
-            <span className="tabular-nums">{counts.total} en total</span>
+          <div className="flex flex-col items-end gap-0.5 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Images className="size-4 text-teal" />
+              <span className="tabular-nums">
+                {counts.total} archivos ·{" "}
+                <span className="font-medium text-charcoal">
+                  {formatBytes(counts.totalBytes ?? 0)}
+                </span>
+              </span>
+            </div>
+            <p className="text-[0.7rem] tabular-nums">
+              Imágenes {formatBytes(counts.imagesBytes ?? 0)} · Adjuntos{" "}
+              {formatBytes(counts.attachmentsBytes ?? 0)}
+            </p>
           </div>
           <Button
             type="button"
