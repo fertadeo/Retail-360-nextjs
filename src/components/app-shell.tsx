@@ -1,14 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
+import { api } from "@/lib/api-client";
+import { isApiMode } from "@/lib/api-config";
 import { ComercioProvider, useComercio } from "@/lib/comercio-context";
+import { presenceActorFromSession } from "@/lib/presence";
 
 function ShellInner({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { comercios, comercioId, setComercioId, comercio } = useComercio();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (!isApiMode()) return;
+    let cancelled = false;
+
+    async function beat() {
+      if (document.visibilityState === "hidden") return;
+      try {
+        const actor = presenceActorFromSession();
+        await api.presencePing({
+          ...actor,
+          path: pathname || "/",
+        });
+      } catch {
+        /* best-effort */
+      }
+    }
+
+    void beat();
+    const t = window.setInterval(() => {
+      if (!cancelled) void beat();
+    }, 45_000);
+    function onVis() {
+      if (document.visibilityState === "visible") void beat();
+    }
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [pathname]);
 
   return (
     <div className="aurix-atmosphere relative flex h-dvh max-h-dvh min-h-0 overflow-hidden">

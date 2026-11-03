@@ -544,4 +544,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body ?? {}),
     }),
+
+  presencePing: (body: {
+    actorKey: string;
+    displayName: string;
+    role?: string | null;
+    path?: string | null;
+    email?: string | null;
+  }) =>
+    request<{ ok: boolean; skipped?: boolean; detail?: string }>(
+      "/presence/ping",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      }
+    ),
 };
