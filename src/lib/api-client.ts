@@ -510,4 +510,38 @@ export const api = {
 
   deleteMedia: (id: string) =>
     request<void>(`/media/${id}`, { method: "DELETE" }),
+
+  optimizeMedia: (body?: {
+    dryRun?: boolean;
+    limit?: number;
+    ids?: string[];
+  }) =>
+    request<{
+      dryRun: boolean;
+      converted: number;
+      skipped: number;
+      errors: number;
+      previews: Array<{
+        id: string;
+        title: string;
+        productId: string | null;
+        sourceLabel: string;
+        before: {
+          filename: string;
+          mime: string;
+          sizeBytes: number;
+          dataUrl: string;
+        };
+        after: {
+          filename: string;
+          mime: string;
+          sizeBytes: number;
+          dataUrl: string;
+        };
+        savedBytes: number;
+      }>;
+    }>("/media/optimize", {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
 };

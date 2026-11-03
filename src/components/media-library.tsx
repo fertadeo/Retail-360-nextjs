@@ -56,6 +56,33 @@ export function MediaLibrary() {
   const [error, setError] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizeApplying, setOptimizeApplying] = useState(false);
+  const [optimizeOpen, setOptimizeOpen] = useState(false);
+  const [optimizeMsg, setOptimizeMsg] = useState<string | null>(null);
+  const [optimizeSkipped, setOptimizeSkipped] = useState(0);
+  const [optimizeErrors, setOptimizeErrors] = useState(0);
+  const [optimizePreviews, setOptimizePreviews] = useState<
+    Array<{
+      id: string;
+      title: string;
+      productId: string | null;
+      sourceLabel: string;
+      before: {
+        filename: string;
+        mime: string;
+        sizeBytes: number;
+        dataUrl: string;
+      };
+      after: {
+        filename: string;
+        mime: string;
+        sizeBytes: number;
+        dataUrl: string;
+      };
+      savedBytes: number;
+    }>
+  >([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
@@ -159,6 +186,66 @@ export function MediaLibrary() {
     }
   }
 
+  async function previewOptimize() {
+    if (!isApiMode()) {
+      setError("Optimizar requiere modo API.");
+      return;
+    }
+    setOptimizing(true);
+    setOptimizeMsg(null);
+    setError(null);
+    try {
+      const data = await api.optimizeMedia({ dryRun: true, limit: 20 });
+      setOptimizePreviews(data.previews ?? []);
+      setOptimizeSkipped(data.skipped);
+      setOptimizeErrors(data.errors);
+      setOptimizeOpen(true);
+      if ((data.previews ?? []).length === 0) {
+        setOptimizeMsg(
+          `Nada para convertir · omitidas ${data.skipped} · errores ${data.errors}`
+        );
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo preparar la optimización."
+      );
+    } finally {
+      setOptimizing(false);
+    }
+  }
+
+  async function applyOptimize() {
+    if (optimizePreviews.length === 0) {
+      setOptimizeOpen(false);
+      return;
+    }
+    setOptimizeApplying(true);
+    setError(null);
+    try {
+      const data = await api.optimizeMedia({
+        dryRun: false,
+        ids: optimizePreviews.map((p) => p.id),
+        limit: optimizePreviews.length,
+      });
+      setOptimizeOpen(false);
+      setOptimizePreviews([]);
+      setOptimizeMsg(
+        `Optimizadas ${data.converted} · omitidas ${data.skipped} · errores ${data.errors}`
+      );
+      await refresh();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo aplicar la optimización."
+      );
+    } finally {
+      setOptimizeApplying(false);
+    }
+  }
+
   const tabs: Array<{ id: TabId; label: string; count: number }> = [
     { id: "image", label: "Imágenes", count: counts.images },
     { id: "attachment", label: "Archivos adjuntos", count: counts.attachments },
@@ -175,11 +262,20 @@ export function MediaLibrary() {
             Imágenes de productos y archivos adjuntos del comercio activo.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Images className="size-4 text-teal" />
             <span className="tabular-nums">{counts.total} en total</span>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={uploading || optimizing || optimizeApplying || !isApiMode()}
+            onClick={() => void previewOptimize()}
+          >
+            {optimizing ? "Preparando…" : "Optimizar imágenes"}
+          </Button>
           <input
             ref={fileRef}
             type="file"
@@ -202,6 +298,12 @@ export function MediaLibrary() {
           </Button>
         </div>
       </div>
+
+      {optimizeMsg ? (
+        <p className="rounded-lg bg-teal/10 px-3 py-2 text-sm text-teal">
+          {optimizeMsg}
+        </p>
+      ) : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div
@@ -300,6 +402,220 @@ export function MediaLibrary() {
           }}
         />
       ) : null}
+
+      {optimizeOpen ? (
+        <OptimizePreviewModal
+          previews={optimizePreviews}
+          skipped={optimizeSkipped}
+          errors={optimizeErrors}
+          applying={optimizeApplying}
+          onClose={() => {
+            if (!optimizeApplying) setOptimizeOpen(false);
+          }}
+          onApply={() => void applyOptimize()}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function OptimizePreviewModal({
+  previews,
+  skipped,
+  errors,
+  applying,
+  onClose,
+  onApply,
+}: {
+  previews: Array<{
+    id: string;
+    title: string;
+    productId: string | null;
+    sourceLabel: string;
+    before: {
+      filename: string;
+      mime: string;
+      sizeBytes: number;
+      dataUrl: string;
+    };
+    after: {
+      filename: string;
+      mime: string;
+      sizeBytes: number;
+      dataUrl: string;
+    };
+    savedBytes: number;
+  }>;
+  skipped: number;
+  errors: number;
+  applying: boolean;
+  onClose: () => void;
+  onApply: () => void;
+}) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !applying) onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [applying, onClose]);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] grid place-items-center p-3 sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="optimize-media-preview-title"
+    >
+      <button
+        type="button"
+        aria-label="Cerrar"
+        className="absolute inset-0 bg-charcoal/75 backdrop-blur-md"
+        disabled={applying}
+        onClick={() => {
+          if (!applying) onClose();
+        }}
+      />
+      <div className="relative z-[1] flex max-h-[min(96dvh,920px)] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-card shadow-2xl ring-1 ring-border">
+        <header className="shrink-0 border-b border-border px-4 py-3 sm:px-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2
+                id="optimize-media-preview-title"
+                className="font-display text-lg font-semibold text-charcoal"
+              >
+                Vista previa de optimización
+              </h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Así se verán al aplicar WebP. Se renombran y se actualiza el
+                producto o biblioteca que las usa.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
+              onClick={onClose}
+              disabled={applying}
+              aria-label="Cerrar"
+            >
+              <X className="size-5" />
+            </button>
+          </div>
+        </header>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
+          <p className="text-sm text-muted-foreground">
+            {previews.length} listas · omitidas {skipped} · errores {errors}
+          </p>
+          {previews.length === 0 ? (
+            <p className="rounded-lg bg-secondary px-3 py-2 text-sm text-muted-foreground">
+              No hay rasters pendientes de convertir en este lote.
+            </p>
+          ) : (
+            <ul className="space-y-4">
+              {previews.map((p) => (
+                <li
+                  key={p.id}
+                  className="overflow-hidden rounded-xl ring-1 ring-border/70"
+                >
+                  <div className="grid gap-0 sm:grid-cols-2">
+                    <OptimizeSide
+                      label="Antes"
+                      filename={p.before.filename}
+                      sizeBytes={p.before.sizeBytes}
+                      dataUrl={p.before.dataUrl}
+                    />
+                    <OptimizeSide
+                      label="Después"
+                      filename={p.after.filename}
+                      sizeBytes={p.after.sizeBytes}
+                      dataUrl={p.after.dataUrl}
+                      highlight
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
+                    <span className="truncate font-medium text-charcoal">
+                      {p.title}
+                      {p.productId ? ` · ${p.sourceLabel}` : ""}
+                    </span>
+                    <span className="tabular-nums text-teal">
+                      −{formatBytes(p.savedBytes)}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <footer className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-card px-4 py-3 sm:px-5">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={applying}
+          >
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            disabled={applying || previews.length === 0}
+            onClick={onApply}
+          >
+            {applying
+              ? "Aplicando…"
+              : previews.length > 0
+                ? `Aplicar ${previews.length}`
+                : "Cerrar"}
+          </Button>
+        </footer>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function OptimizeSide({
+  label,
+  filename,
+  sizeBytes,
+  dataUrl,
+  highlight,
+}: {
+  label: string;
+  filename: string;
+  sizeBytes: number;
+  dataUrl: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div className={cn("space-y-2 p-3", highlight ? "bg-teal/5" : "bg-card")}>
+      <div className="flex items-center justify-between gap-2 text-[0.7rem]">
+        <span
+          className={cn(
+            "font-medium uppercase tracking-wide",
+            highlight ? "text-teal" : "text-muted-foreground"
+          )}
+        >
+          {label}
+        </span>
+        <span className="tabular-nums text-muted-foreground">
+          {formatBytes(sizeBytes)}
+        </span>
+      </div>
+      <div className="aspect-[4/3] overflow-hidden rounded-lg bg-secondary ring-1 ring-border/50">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={dataUrl}
+          alt={filename}
+          className="h-full w-full object-contain"
+        />
+      </div>
+      <p className="truncate text-xs font-medium text-charcoal">{filename}</p>
     </div>
   );
 }
