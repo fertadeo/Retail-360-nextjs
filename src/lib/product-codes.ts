@@ -1,6 +1,7 @@
 import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
 import { AURIX_BRAND } from "@/lib/brand";
+import { getPrintSettings, printLayoutCss } from "@/lib/print-settings";
 import type { Product } from "@/lib/types";
 import { formatMxn } from "@/lib/utils";
 
@@ -51,13 +52,14 @@ export type LabelPrintOptions = {
 };
 
 /**
- * Etiqueta térmica 80 mm: nombre, SKU, precio, barcode (+ QR opcional).
- * Usa iframe oculto (sin pop-up).
+ * Etiqueta térmica: nombre, SKU, precio, barcode (+ QR opcional).
+ * Ancho según Configuración → Impresora. Usa iframe oculto (sin pop-up).
  */
 export async function printProductLabel(
   product: Product,
   options: LabelPrintOptions = {}
 ): Promise<void> {
+  const print = getPrintSettings();
   const includeQr = options.includeQr !== false;
   const copies = Math.max(1, Math.min(20, options.copies ?? 1));
   const code = productBarcodeValue(product);
@@ -65,6 +67,8 @@ export async function printProductLabel(
   const qrSrc = includeQr
     ? await qrDataUrl(productQrPayload(product), 120)
     : "";
+  const barcodeMax = Math.max(24, print.contentWidthMm - 4);
+  const qrSize = Math.min(28, Math.round(print.contentWidthMm * 0.4));
 
   const labelBody = `
     <div class="label">
@@ -85,13 +89,12 @@ export async function printProductLabel(
   <meta charset="utf-8" />
   <title>Etiqueta ${esc(code)}</title>
   <style>
-    @page { size: 80mm auto; margin: 2mm; }
+    ${printLayoutCss(print)}
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: "Courier New", Courier, monospace;
-      color: #111;
-      width: 72mm;
-      margin: 0 auto;
+      font-family: "Courier New", Courier, "Noto Sans Mono", monospace;
+      color: #000;
+      font-weight: 700;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
@@ -102,31 +105,32 @@ export async function printProductLabel(
     }
     .label:last-child { page-break-after: auto; }
     .brand {
-      font-size: 11px;
-      font-weight: 700;
+      font-size: ${Math.round(13 * print.fontScale * 10) / 10}px;
+      font-weight: 900;
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }
     .name {
       margin-top: 4px;
-      font-size: 13px;
-      font-weight: 700;
+      font-size: ${Math.round(14 * print.fontScale * 10) / 10}px;
+      font-weight: 900;
       line-height: 1.25;
     }
     .meta {
       margin-top: 3px;
-      font-size: 11px;
+      font-size: ${Math.round(12 * print.fontScale * 10) / 10}px;
+      font-weight: 700;
     }
     .barcode {
       display: block;
       width: 100%;
-      max-width: 68mm;
+      max-width: ${barcodeMax}mm;
       height: auto;
       margin: 6px auto 2px;
     }
     .qr-wrap { margin-top: 6px; }
-    .qr { width: 28mm; height: 28mm; }
-    .qr-hint { font-size: 9px; margin-top: 2px; }
+    .qr { width: ${qrSize}mm; height: ${qrSize}mm; }
+    .qr-hint { font-size: ${Math.round(9 * print.fontScale * 10) / 10}px; margin-top: 2px; }
   </style>
 </head>
 <body>
