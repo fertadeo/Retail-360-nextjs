@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
+import { ViewAsBanner } from "@/components/account/view-as-banner";
+import { AccountSessionProvider } from "@/lib/account-session";
 import { api } from "@/lib/api-client";
 import { isApiMode } from "@/lib/api-config";
 import { ComercioProvider, useComercio } from "@/lib/comercio-context";
@@ -88,6 +90,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
             </select>
           </div>
         </header>
+        <ViewAsBanner />
         <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           <div className="mx-auto w-full max-w-7xl animate-aurix-fade">
             {children}
@@ -99,9 +102,13 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  if (pathname === "/tienda" || pathname.startsWith("/tienda/") || pathname === "/login" || pathname === "/cambiar-contrasena") return <>{children}</>;
   return (
+    <AccountSessionProvider>
     <ComercioProvider>
       <ShellInner>{children}</ShellInner>
     </ComercioProvider>
+    </AccountSessionProvider>
   );
 }

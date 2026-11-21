@@ -1,11 +1,15 @@
+import { getApiScope } from "@/lib/api-scope";
 import { apiUrl } from "@/lib/api-config";
+import { BRANCHES_ENABLED } from "@/lib/features";
 import type {
+  AppFunctionMeta,
   Branch,
   Channel,
   ChannelConfig,
   ChannelLink,
   Client,
   Comercio,
+  DashboardStats,
   DiscountBasis,
   DiscountMode,
   DiscountRule,
@@ -15,13 +19,29 @@ import type {
   PaymentMethod,
   PriceList,
   Product,
+  Category,
   ProductCategory,
   Quote,
   QuoteStatus,
   StockMode,
   StockShareGroup,
   StockShareMode,
+  UserAccount,
+  UserRole,
+  VendorSalesRow,
 } from "@/lib/types";
+
+export type ProductPageOptions = {
+  page: number; pageSize?: number; q?: string; category?: string;
+  health?: "all" | "ready" | "attention" | "critical";
+  sort?: "nombre" | "recent" | "oldest" | "sold_desc" | "sold_asc";
+  pos?: boolean;
+};
+export type ProductHealthCounts = { all: number; ready: number; attention: number; critical: number };
+export type ProductPage = {
+  items: Product[]; page: number; pageSize: number; hasMore: boolean;
+  counts?: ProductHealthCounts;
+};
 
 export type QuotePayload = {
   clientId?: string | null;
@@ -56,9 +76,18 @@ export class ApiError extends Error {
 }
 
 function activeComercioHeader(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const id = localStorage.getItem("retail360.comercioId");
+  const id = typeof window === "undefined" ? null : localStorage.getItem("retail360.comercioId");
   return id ? { "X-Comercio-Id": id } : {};
+}
+
+function activeScopeHeaders(): Record<string, string> {
+  const out: Record<string, string> = {};
+  const { branchScope, vendedorId } = getApiScope();
+  if (BRANCHES_ENABLED && branchScope && branchScope !== "all") {
+    out["X-Branch-Id"] = branchScope;
+  }
+  if (vendedorId) out["X-Vendedor-Id"] = vendedorId;
+  return out;
 }
 
 async function request<T>(
@@ -71,6 +100,7 @@ async function request<T>(
       Accept: "application/json",
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...activeComercioHeader(),
+      ...activeScopeHeaders(),
       ...init?.headers,
     },
     cache: "no-store",
@@ -81,34 +111,167 @@ async function request<T>(
     try {
       data = JSON.parse(text) as unknown;
     } catch {
-      data = { error: text };
+      data = { error: friendlyHttpError(res.status, text) };
     }
   }
+  if (res.status === 403 && data && typeof data === "object" && "code" in data && data.code === "PASSWORD_CHANGE_REQUIRED" && typeof window !== "undefined" && window.location.pathname !== "/cambiar-contrasena") {
+    // Enforce the first-access gate even for requests from an already mounted private screen.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/cambiar-contrasena");
+  }
+  if (res.status === 401 && typeof window !== "undefined") {
+    // Discard cached private UI after the server rejects the session.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+  }
   if (!res.ok) {
-    const msg =
+    const raw =
       data &&
       typeof data === "object" &&
       "error" in data &&
       typeof (data as { error: unknown }).error === "string"
         ? (data as { error: string }).error
         : `Error HTTP ${res.status}`;
+    const msg = looksLikeHtml(raw)
+      ? friendlyHttpError(res.status, raw)
+      : raw;
     throw new ApiError(res.status, msg);
   }
   return data as T;
 }
 
+function looksLikeHtml(value: string): boolean {
+  const t = value.trim().toLowerCase();
+  return t.startsWith("<!doctype") || t.startsWith("<html");
+}
+
+function friendlyHttpError(status: number, body: string): string {
+  if (status === 502 || /502\s*bad\s*gateway/i.test(body)) {
+    return "API caída (502). En el VPS: pm2 status / pm2 logs y reiniciá el servicio.";
+  }
+  if (status === 503 || /503\s*service/i.test(body)) {
+    return "API no disponible (503). Revisá PM2 en el VPS.";
+  }
+  if (status === 504 || /504\s*gateway/i.test(body)) {
+    return "Timeout hacia la API (504).";
+  }
+  if (looksLikeHtml(body)) {
+    return `Error HTTP ${status} (respuesta no JSON del proxy).`;
+  }
+  const trimmed = body.trim();
+  return trimmed ? trimmed.slice(0, 200) : `Error HTTP ${status}`;
+}
+
 export const api = {
+  optimizeMedia: (body?: {
+    dryRun?: boolean;
+    limit?: number;
+    ids?: string[];
+  }) =>
+    request<{
+      dryRun: boolean;
+      converted: number;
+      skipped: number;
+      errors: number;
+      previews: Array<{
+        id: string;
+        title: string;
+        productId: string | null;
+        sourceLabel: string;
+        before: {
+          filename: string;
+          mime: string;
+          sizeBytes: number;
+          dataUrl: string;
+        };
+        after: {
+          filename: string;
+          mime: string;
+          sizeBytes: number;
+          dataUrl: string;
+        };
+        savedBytes: number;
+      }>;
+    }>("/media/optimize", {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
+
+  presencePing: (body: {
+    actorKey: string;
+    displayName: string;
+    role?: string | null;
+    path?: string | null;
+    email?: string | null;
+  }) =>
+    request<{ ok: boolean; skipped?: boolean; detail?: string }>(
+      "/presence/ping",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      }
+    ),
+  listStoreCollections: (signal?:AbortSignal) => request<import("@/lib/collections").CollectionMeta[]>("/catalog/collections",{signal}),
+  getStoreCollection: (id:string,signal?:AbortSignal) => request<import("@/lib/collections").CollectionDetail>(`/catalog/collections/${encodeURIComponent(id)}`,{signal}),
+  saveStoreCollection: (id:string|undefined,body:import("@/lib/collections").CollectionInput) => request<import("@/lib/collections").CollectionDetail>(`/catalog/collections${id ? `/${encodeURIComponent(id)}` : ""}`,{method:id ? "PUT" : "POST",body:JSON.stringify(body)}),
+  publishStoreCollection: (id:string,revision:number) => request<import("@/lib/collections").CollectionDetail>(`/catalog/collections/${encodeURIComponent(id)}/publish`,{method:"POST",body:JSON.stringify({revision})}),
+  pauseStoreCollection: (id:string,revision:number) => request<import("@/lib/collections").CollectionDetail>(`/catalog/collections/${encodeURIComponent(id)}/pause`,{method:"POST",body:JSON.stringify({revision})}),
+  collectionProducts: (options:{page:number;q:string;ids?:string[]},signal?:AbortSignal) => {
+    const params=new URLSearchParams({page:String(options.ids ? 1 : options.page),q:options.q});
+    if(options.ids)params.set("ids",options.ids.join(","));
+    return request<import("@/lib/collections").PickerPage>(`/catalog/collections/products?${params}`,{signal});
+  },
+  collectionProductIds: (q:string) => request<{ids:string[]}>(`/catalog/collections/product-ids?${new URLSearchParams({q})}`),
+  getSession: () => request<import("@/lib/account").AccountSession>("/auth/session"),
+  getAccountProfile: () => request<import("@/lib/account").AccountProfile>("/auth/profile"),
+  updateAccountProfile: (body:import("@/lib/account").ProfileDraft) => request<import("@/lib/account").AccountProfile>("/auth/profile", {method:"PATCH",body:JSON.stringify(body)}),
+  changeOwnPassword: (body:{currentPassword:string;newPassword:string}) => request<{ok:boolean}>("/auth/password", {method:"PUT",body:JSON.stringify(body)}),
+  startViewAs: (userId:string) => request<{ok:boolean}>("/auth/view-as", {method:"POST",body:JSON.stringify({userId})}),
+  stopViewAs: () => request<{ok:boolean}>("/auth/view-as/stop", {method:"POST"}),
   health: () =>
     request<{ ok: boolean; db: boolean }>("/health"),
 
   dashboardStats: (day?: string) =>
-    request<{
-      productos: number;
-      clientes: number;
-      pedidosAbiertos: number;
-      ventasHoy: number;
-      stockBajo: number;
-    }>(day ? `/dashboard/stats?day=${encodeURIComponent(day)}` : "/dashboard/stats"),
+    request<DashboardStats>(
+      day
+        ? `/dashboard/stats?day=${encodeURIComponent(day)}`
+        : "/dashboard/stats"
+    ),
+
+  salesByVendor: (opts?: {
+    from?: string;
+    to?: string;
+    canal?: "pos" | "pedido" | "mayorista";
+  }) => {
+    const q = new URLSearchParams();
+    if (opts?.from) q.set("from", opts.from);
+    if (opts?.to) q.set("to", opts.to);
+    if (opts?.canal) q.set("canal", opts.canal);
+    const qs = q.toString();
+    return request<VendorSalesRow[]>(
+      qs ? `/reports/sales-by-vendor?${qs}` : "/reports/sales-by-vendor"
+    );
+  },
+
+  listCategories: (onlyActive = false) =>
+    request<Category[]>(
+      onlyActive ? "/categories?active=1" : "/categories"
+    ),
+
+  createCategory: (body: { nombre: string; codigo?: string }) =>
+    request<Category>("/categories", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updateCategory: (
+    id: string,
+    body: Partial<{ nombre: string; activa: boolean }>
+  ) =>
+    request<Category>(`/categories/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 
   listPriceLists: (onlyActive = false) =>
     request<PriceList[]>(
@@ -146,6 +309,37 @@ export const api = {
     }),
 
   listProducts: () => request<Product[]>("/products"),
+  productHealthCounts: (q: string, category: string, signal?: AbortSignal) =>
+    request<ProductHealthCounts>(`/products/counts?${new URLSearchParams({ q, category })}`, { signal }),
+  listProductsPage: (options: ProductPageOptions, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(options)) {
+      if (value !== undefined) params.set(key, String(value));
+    }
+    return request<ProductPage>(`/products?${params}`, { signal });
+  },
+
+  importProductFromUrl: (url: string) =>
+    request<{
+      draft: {
+        nombre: string;
+        sku: string;
+        descripcion: string;
+        precio: number;
+        categoria: ProductCategory;
+        sourceUrl: string;
+        images: Array<{
+          filename: string;
+          mime: string;
+          dataUrl: string | null;
+          sourceUrl: string;
+        }>;
+        warnings: string[];
+      };
+    }>("/products/import-from-url", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
 
   getProduct: (id: string) => request<Product>(`/products/${id}`),
 
@@ -218,6 +412,8 @@ export const api = {
     direccionEnvio?: string;
     telefonoContacto?: string;
     metodoPago: PaymentMethod;
+    branchId?: string | null;
+    vendedorId?: string | null;
   }) =>
     request<Order>("/pos/checkout", {
       method: "POST",
@@ -241,6 +437,7 @@ export const api = {
     codigo: string;
     nombre: string;
     direccion?: string;
+    rubro?: string;
     activa?: boolean;
     esDefault?: boolean;
   }) =>
@@ -255,6 +452,7 @@ export const api = {
       codigo: string;
       nombre: string;
       direccion?: string;
+      rubro?: string;
       activa?: boolean;
       esDefault?: boolean;
     }
@@ -266,6 +464,54 @@ export const api = {
 
   setDefaultBranch: (id: string) =>
     request<Branch>(`/branches/${id}/set-default`, { method: "POST" }),
+
+  softDeleteBranch: (id: string) =>
+    request<Branch>(`/branches/${id}`, { method: "DELETE" }),
+
+  restoreBranch: (id: string) =>
+    request<Branch>(`/branches/${id}/restore`, { method: "POST" }),
+
+  listUsers: (onlyActive = false) =>
+    request<UserAccount[]>(onlyActive ? "/users?active=1" : "/users"),
+
+  listUserFunctions: () => request<AppFunctionMeta[]>("/users/functions"),
+
+  createUser: (body: {
+    email: string;
+    nombre: string;
+    password?: string;
+    role: UserRole;
+    activa?: boolean;
+    branchIds?: string[];
+    functions?: string[];
+  }) =>
+    request<UserAccount>("/users", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updateUser: (
+    id: string,
+    body: {
+      email: string;
+      nombre: string;
+      password?: string;
+      role: UserRole;
+      activa?: boolean;
+      branchIds?: string[];
+      functions?: string[];
+    }
+  ) =>
+    request<UserAccount>(`/users/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  softDeleteUser: (id: string) =>
+    request<UserAccount>(`/users/${id}`, { method: "DELETE" }),
+
+  restoreUser: (id: string) =>
+    request<UserAccount>(`/users/${id}/restore`, { method: "POST" }),
 
   listChannels: () => request<ChannelConfig[]>("/channels"),
 
@@ -329,6 +575,60 @@ export const api = {
       { method: "POST" }
     ),
 
+  pullWooProducts: (body?: {
+    priceListId?: string | null;
+    branchId?: string | null;
+    comercioId?: string | null;
+    dryRun?: boolean;
+  }) =>
+    request<{
+      dryRun: boolean;
+      found: number;
+      eligible: number;
+      matched: number;
+      toCreate: number;
+      created: number;
+      updated: number;
+      linked: number;
+      skipped: number;
+      imagesSynced: number;
+      imagesMissing: number;
+      skippedByType: Array<{
+        type: string;
+        label: string;
+        count: number;
+        explanation: string;
+      }>;
+      skipSummary: string;
+      priceListId: string;
+      branchId: string | null;
+      comercio: { id: string; codigo: string; nombre: string };
+      errors: Array<{ sku: string; error: string }>;
+    }>("/channels/woocommerce/pull", {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+      headers: body?.comercioId
+        ? { "X-Comercio-Id": body.comercioId }
+        : undefined,
+    }),
+
+  migrateWooPrices: (body: {
+    fromPriceListId: string;
+    toPriceListId?: string | null;
+    newListNombre?: string;
+    newListCodigo?: string;
+    onlyLinked?: boolean;
+    setAsChannelList?: boolean;
+  }) =>
+    request<{
+      copied: number;
+      toPriceListId: string;
+      toPriceListNombre: string;
+    }>("/channels/woocommerce/migrate-prices", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   pushMeliProduct: (
     productId: string,
     mode: "stock" | "price" | "both" = "both"
@@ -343,6 +643,69 @@ export const api = {
       "/channels/mercadolibre/push-all",
       { method: "POST", body: JSON.stringify({ mode }) }
     ),
+
+  pullMeliProducts: (body?: {
+    priceListId?: string | null;
+    comercioId?: string | null;
+    dryRun?: boolean;
+  }) =>
+    request<{
+      dryRun: boolean;
+      found: number;
+      eligible: number;
+      matched: number;
+      toCreate: number;
+      created: number;
+      updated: number;
+      linked: number;
+      skipped: number;
+      imagesSynced: number;
+      imagesMissing: number;
+      skippedByType: Array<{
+        type: string;
+        label: string;
+        count: number;
+        explanation: string;
+      }>;
+      skipSummary: string;
+      priceListId: string;
+      priceListNombre: string;
+      priceListCreated: boolean;
+      branchId: string | null;
+      sellerId: string;
+      comercio: { id: string; codigo: string; nombre: string };
+      errors: Array<{ sku: string; error: string }>;
+    }>("/channels/mercadolibre/pull", {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+      headers: body?.comercioId
+        ? { "X-Comercio-Id": body.comercioId }
+        : undefined,
+    }),
+
+  meliNotificationsCallback: () =>
+    request<{
+      path: string;
+      url: string | null;
+      hint: string;
+      topicsRecommended: string[];
+    }>("/channels/mercadolibre/notifications/callback"),
+
+  listMeliNotifications: (limit = 40) =>
+    request<
+      Array<{
+        id: string;
+        meliEventId: string | null;
+        topic: string;
+        resource: string;
+        userId: string | null;
+        status: "queued" | "processing" | "done" | "skipped" | "error";
+        resultMessage: string | null;
+        productId: string | null;
+        receivedAt: string;
+        processedAt: string | null;
+      }>
+    >(`/channels/mercadolibre/notifications?limit=${limit}`),
 
   listComercios: (onlyActive = false) =>
     request<Comercio[]>(
@@ -380,6 +743,12 @@ export const api = {
 
   setDefaultComercio: (id: string) =>
     request<Comercio>(`/comercios/${id}/set-default`, { method: "POST" }),
+
+  softDeleteComercio: (id: string) =>
+    request<Comercio>(`/comercios/${id}`, { method: "DELETE" }),
+
+  restoreComercio: (id: string) =>
+    request<Comercio>(`/comercios/${id}/restore`, { method: "POST" }),
 
   listStockShareGroups: () =>
     request<StockShareGroup[]>("/stock-share-groups"),
@@ -483,15 +852,25 @@ export const api = {
   deleteQuote: (id: string) =>
     request<void>(`/quotes/${id}`, { method: "DELETE" }),
 
-  listMedia: (params?: { kind?: "image" | "attachment" | "all"; q?: string }) => {
+  listMedia: (params?: {
+    page?: number;
+    pageSize?: number;
+    kind?: "image" | "attachment" | "all";
+    q?: string;
+    productId?: string;
+  }, signal?: AbortSignal) => {
     const sp = new URLSearchParams();
+    sp.set("page", String(params?.page ?? 1));
+    sp.set("pageSize", String(params?.pageSize ?? 24));
     if (params?.kind && params.kind !== "all") sp.set("kind", params.kind);
     if (params?.q) sp.set("q", params.q);
+    if (params?.productId) sp.set("productId", params.productId);
     const qs = sp.toString();
     return request<{
       items: import("@/lib/media-library").MediaLibraryItem[];
       counts: import("@/lib/media-library").MediaLibraryCounts;
-    }>(`/media${qs ? `?${qs}` : ""}`);
+      page: number; pageSize: number; hasMore: boolean;
+    }>(`/media${qs ? `?${qs}` : ""}`, { signal });
   },
 
   createMedia: (body: {
@@ -502,61 +881,71 @@ export const api = {
     sizeBytes: number;
     dataUrl: string | null;
     title?: string;
+    isPrimary?: boolean;
+    sortOrder?: number;
   }) =>
     request<import("@/lib/media-library").MediaLibraryItem>("/media", {
       method: "POST",
       body: JSON.stringify(body),
     }),
 
+  updateMedia: (
+    id: string,
+    body: {
+      productId?: string | null;
+      title?: string;
+      isPrimary?: boolean;
+      sortOrder?: number;
+    }
+  ) =>
+    request<import("@/lib/media-library").MediaLibraryItem>(`/media/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
   deleteMedia: (id: string) =>
     request<void>(`/media/${id}`, { method: "DELETE" }),
 
-  optimizeMedia: (body?: {
-    dryRun?: boolean;
-    limit?: number;
-    ids?: string[];
-  }) =>
+  listProductImages: (productId: string) =>
     request<{
-      dryRun: boolean;
-      converted: number;
-      skipped: number;
-      errors: number;
-      previews: Array<{
-        id: string;
-        title: string;
-        productId: string | null;
-        sourceLabel: string;
-        before: {
-          filename: string;
-          mime: string;
-          sizeBytes: number;
-          dataUrl: string;
-        };
-        after: {
-          filename: string;
-          mime: string;
-          sizeBytes: number;
-          dataUrl: string;
-        };
-        savedBytes: number;
-      }>;
-    }>("/media/optimize", {
+      imagenPrincipal: import("@/lib/types").ProductImage | null;
+      imagenesSecundarias: import("@/lib/types").ProductImage[];
+      items: import("@/lib/types").ProductImage[];
+    }>(`/products/${productId}/images`),
+
+  setProductImagePrimary: (productId: string, mediaId: string) =>
+    request<{
+      imagenPrincipal: import("@/lib/types").ProductImage | null;
+      imagenesSecundarias: import("@/lib/types").ProductImage[];
+      items: import("@/lib/types").ProductImage[];
+    }>(`/products/${productId}/images/primary`, {
       method: "POST",
-      body: JSON.stringify(body ?? {}),
+      body: JSON.stringify({ mediaId }),
     }),
 
-  presencePing: (body: {
-    actorKey: string;
-    displayName: string;
-    role?: string | null;
-    path?: string | null;
-    email?: string | null;
-  }) =>
-    request<{ ok: boolean; skipped?: boolean; detail?: string }>(
-      "/presence/ping",
-      {
-        method: "POST",
-        body: JSON.stringify(body),
-      }
-    ),
+  getCatalogSettings: () =>
+    request<{ settings: import("@/lib/catalog").CatalogSettings }>(
+      "/catalog/settings"
+    ).then((r) => r.settings),
+
+  putCatalogSettings: (body: import("@/lib/catalog").CatalogSettings) =>
+    request<{ settings: import("@/lib/catalog").CatalogSettings }>("/catalog/settings", {
+      method: "PUT", body: JSON.stringify(body),
+    }).then(result => result.settings),
+
+  listCatalogOrders: (options: { page: number; status?: string; q?: string }, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ page: String(options.page), pageSize: "20" });
+    if (options.status) params.set("status", options.status);
+    if (options.q) params.set("q", options.q);
+    return request<import("@/lib/catalog").CatalogOrderPage>(`/catalog/orders?${params}`, { signal });
+  },
+
+  patchCatalogOrder: (
+    id: string,
+    status: Exclude<import("@/lib/catalog").CatalogOrderStatus, "cobrado">
+  ) =>
+    request<{ order: import("@/lib/catalog").CatalogOrder }>(
+      `/catalog/orders/${id}`,
+      { method: "PATCH", body: JSON.stringify({ status }) }
+    ).then((r) => r.order),
 };
