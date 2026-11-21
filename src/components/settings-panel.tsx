@@ -1,5 +1,7 @@
 "use client";
 
+import { StoreAdministration } from "@/components/catalog/catalog-admin";
+import { CollectionsManager } from "@/components/catalog/collections-manager";
 import { useState } from "react";
 import { PrintPaperSettings } from "@/components/print-paper-settings";
 import { Button } from "@/components/ui/button";
@@ -15,10 +17,10 @@ import type { PriceList } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useRetailQuery } from "@/lib/use-retail-query";
 
-type SettingsTab = "impresora" | "listas";
+type SettingsTab = "impresora" | "listas" | "tienda" | "inicio";
 
 export function SettingsPanel() {
-  const [tab, setTab] = useState<SettingsTab>("impresora");
+  const [tab, setTab] = useState<SettingsTab>("tienda");
   const {
     data,
     loading,
@@ -112,6 +114,8 @@ export function SettingsPanel() {
   }
 
   const tabs: Array<{ id: SettingsTab; label: string }> = [
+    { id: "tienda", label: "Publicación de tienda" },
+    { id: "inicio", label: "Inicio de tienda" },
     { id: "impresora", label: "Impresora" },
     { id: "listas", label: "Listas de precios" },
   ];
@@ -126,9 +130,7 @@ export function SettingsPanel() {
           Configuración
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Papel de impresora y listas de precios diferenciadas (minorista,
-          mayorista u otras). Cada cliente puede tener una lista; el POS y el
-          catálogo usan la default si no hay cliente.
+          Publicá tu tienda, diseñá las colecciones del inicio y configurá la impresora y las listas de precios.
         </p>
       </div>
 
@@ -159,6 +161,8 @@ export function SettingsPanel() {
         })}
       </div>
 
+      {tab === "tienda" ? <StoreAdministration section="settings" /> : null}
+      {tab === "inicio" ? <CollectionsManager /> : null}
       {tab === "impresora" ? <PrintPaperSettings /> : null}
 
       {tab === "listas" ? (

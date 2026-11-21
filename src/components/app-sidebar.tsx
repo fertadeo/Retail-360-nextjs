@@ -1,5 +1,6 @@
 "use client";
 
+import { SidebarAccount } from "@/components/sidebar-account";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -20,7 +21,8 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Inicio", icon: LayoutDashboard, exact: true },
-  { href: "/catalogo", label: "Catálogo", icon: Store },
+  { href: "/tienda", label: "Ver tienda", icon: Store },
+  { href: "/mi-cuenta", label: "Mi cuenta", icon: Users },
   { href: "/productos", label: "Productos", icon: Package },
   { href: "/clientes", label: "Clientes", icon: Users },
   { href: "/presupuestos", label: "Presupuestos", icon: FileText },
@@ -90,9 +92,7 @@ export function AppSidebar({
             );
           })}
         </nav>
-        <div className="border-t border-white/10 px-4 py-4 text-xs text-sand/50">
-          Retail 360 · WooCommerce · ML
-        </div>
+        <SidebarAccount onNavigate={onClose} />
       </aside>
     </>
   );

@@ -16,6 +16,7 @@ const syne = Syne({
 });
 
 export const metadata: Metadata = {
+  ...(process.env.NEXT_PUBLIC_SITE_URL ? { metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL) } : {}),
   title: "Retail 360",
   description:
     "Retail 360: multicomercio, catálogo, POS, sync WooCommerce y Mercado Libre.",
